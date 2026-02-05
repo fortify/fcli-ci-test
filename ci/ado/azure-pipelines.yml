@@ -82,3 +82,4 @@ jobs:
           SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
           SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)
           SSC_APPVERSION: $(FORTIFY_RELEASE)
+          SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
