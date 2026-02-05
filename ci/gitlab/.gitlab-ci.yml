@@ -60,6 +60,7 @@ test-v2-ssc-ast-scan:
     SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
     SSC_APPVERSION: ${FORTIFY_RELEASE}
     SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+    SAST_SCAN_EXTRA_OPTS: --no-replace
 
 # v3 setup component test (product-agnostic)
 test-v3-setup:
@@ -112,3 +113,4 @@ test-v3-ssc-ast-scan:
     SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
     SSC_APPVERSION: ${FORTIFY_RELEASE}
     SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+    SAST_SCAN_EXTRA_OPTS: --no-replace

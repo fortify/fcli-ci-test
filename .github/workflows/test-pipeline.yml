@@ -132,3 +132,4 @@ jobs:
           SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
           SSC_APPVERSION: ${{ inputs.fortify_release }}
           SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+          SAST_SCAN_EXTRA_OPTS: --no-replace
