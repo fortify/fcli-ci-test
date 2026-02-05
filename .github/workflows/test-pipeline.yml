@@ -60,7 +60,7 @@ jobs:
   test-setup:
     name: ${{ inputs.version }} / setup / ${{ inputs.os }}
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
-    if: inputs.component == 'setup'
+    if: ${{ inputs.component == 'setup' }}
     steps:
       - name: Checkout fortify/github-action
         uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
   test-fod-ast-scan:
     name: ${{ inputs.version }} / FoD / ast-scan / ${{ inputs.os }}
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
-    if: inputs.product == 'fod' && inputs.component == 'ast-scan'
+    if: ${{ inputs.product == 'fod' && inputs.component == 'ast-scan' }}
     steps:
       - name: Checkout test sources
         uses: actions/checkout@v4
@@ -108,7 +108,7 @@ jobs:
   test-ssc-ast-scan:
     name: ${{ inputs.version }} / SSC / ast-scan / ${{ inputs.os }}
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
-    if: inputs.product == 'ssc' && inputs.component == 'ast-scan'
+    if: ${{ inputs.product == 'ssc' && inputs.component == 'ast-scan' }}
     steps:
       - name: Checkout test sources
         uses: actions/checkout@v4
