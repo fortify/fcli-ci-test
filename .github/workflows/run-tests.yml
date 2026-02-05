@@ -93,7 +93,7 @@ jobs:
                     matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\"}")
                   else
                     echo "    Filtering: $ci_system + $os (not supported)"
-                    ((filtered_count++))
+                    filtered_count=$((filtered_count + 1))
                     filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
                   fi
                 done
@@ -107,7 +107,7 @@ jobs:
                         matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\"}")
                       else
                         echo "    Filtering: $ci_system + $os (not supported)"
-                        ((filtered_count++))
+                        filtered_count=$((filtered_count + 1))
                         filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
                       fi
                     done
