@@ -354,13 +354,12 @@ jobs:
   test:
     name: Test ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
     needs: [prepare-matrix, sync-gitlab, sync-ado]
+    runs-on: ubuntu-latest
     if: |
       always() &&
       needs.prepare-matrix.outputs.matrix != '[]' &&
       (needs.sync-gitlab.result == 'success' || needs.sync-gitlab.result == 'skipped') &&
       (needs.sync-ado.result == 'success' || needs.sync-ado.result == 'skipped')
-    runs-on: ubuntu-latest
-    if: needs.prepare-matrix.outputs.matrix != '[]'
     strategy:
       fail-fast: false
       matrix:
