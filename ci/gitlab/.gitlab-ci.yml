@@ -14,10 +14,10 @@ include:
       - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
 # Fallback job when no variables are set (e.g., direct push)
 stages:
-  - .pre
+  - test
 
 no-op:
-  stage: .pre
+  stage: test
   rules:
     - if: $VERSION == null || $COMPONENT == null
   script:

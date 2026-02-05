@@ -397,7 +397,7 @@ jobs:
             -f fcli_url=${{ steps.fcli-url.outputs.url }} \
             -f product=${{ matrix.product }} \
             -f component=${{ matrix.component }} \
-            -f source_dir=${{ matrix.source_dir }} \
+            -f source_dir=sources/${{ matrix.source_dir }} \
             -f os=${{ matrix.os }} \
             -f fortify_release=${{ steps.fortify-release.outputs.name }}
           
@@ -470,7 +470,7 @@ jobs:
             -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
             -F "variables[PRODUCT]=${{ matrix.product }}" \
             -F "variables[COMPONENT]=${{ matrix.component }}" \
-            -F "variables[SOURCE_DIR]=\$CI_PROJECT_DIR/sources/${{ matrix.source_dir }}" \
+            -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
             -F "variables[OS]=${{ matrix.os }}" \
             -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
           
@@ -546,7 +546,7 @@ jobs:
                 \"FCLI_URL\": \"${{ steps.fcli-url.outputs.url }}\",
                 \"PRODUCT\": \"${{ matrix.product }}\",
                 \"COMPONENT\": \"${{ matrix.component }}\",
-                \"SOURCE_DIR\": \"\$(Build.SourcesDirectory)/sources/${{ matrix.source_dir }}\",
+                \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
                 \"OS\": \"${{ matrix.os }}\",
                 \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\"
               }

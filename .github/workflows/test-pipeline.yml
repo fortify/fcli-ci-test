@@ -101,7 +101,7 @@ jobs:
         uses: ./github-action
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
-          SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
+          SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
           FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
@@ -127,7 +127,7 @@ jobs:
         uses: ./github-action
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
-          SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
+          SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
           SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}

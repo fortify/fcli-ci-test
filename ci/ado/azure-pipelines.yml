@@ -48,7 +48,6 @@ jobs:
           targetType: 'inline'
           script: |
             echo "Testing @fortify/setup $(VERSION) with fcli action run ci for FoD"
-            cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             npx @fortify/setup@v2 env ado
             fcli action run ci
@@ -58,6 +57,7 @@ jobs:
           FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
           FOD_RELEASE: $(FORTIFY_RELEASE)
+          SOURCE_DIR: $(Build.SourcesDirectory)/$(SOURCE_DIR)
 
   # SSC ast-scan test
   - job: test_ssc_ast_scan
