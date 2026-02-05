@@ -1,4 +1,5 @@
 name: Test Pipeline
+run-name: ${{ inputs.version }} / ${{ inputs.component }} / ${{ inputs.product }} / ${{ inputs.os }}
 
 on:
   workflow_dispatch:
