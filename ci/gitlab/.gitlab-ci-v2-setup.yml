@@ -8,4 +8,4 @@ include:
       - if: $VERSION == "v2" && $COMPONENT == "setup"
 
 variables:
-  FCLI_BOOTSTRAP_URL: ${FCLI_URL}
+  FCLI_URL: ${FCLI_URL}

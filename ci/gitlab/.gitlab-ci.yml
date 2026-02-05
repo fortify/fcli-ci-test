@@ -1,70 +1,14 @@
 # Expected inputs from trigger:
-# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS
+# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, FORTIFY_RELEASE
 
-# Conditionally include component-specific pipelines based on inputs
+# Conditionally include version/component-specific pipelines
 include:
-  - local: ci/gitlab/v2-setup.yml
+  - local: .gitlab-ci-v2-setup.yml
     rules:
       - if: $VERSION == "v2" && $COMPONENT == "setup"
-  - local: ci/gitlab/v2-fod-ast-scan.yml
+  - local: .gitlab-ci-v2-fod-ast-scan.yml
     rules:
       - if: $VERSION == "v2" && $PRODUCT == "fod" && $COMPONENT == "ast-scan"
-  - local: ci/gitlab/v2-ssc-ast-scan.yml
+  - local: .gitlab-ci-v2-ssc-ast-scan.yml
     rules:
       - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
-
-stages:
-  - test
-
-# v3 setup component test (product-agnostic)
-test-v3-setup:
-  stage: test
-  image: node:22
-  rules:
-    - if: $VERSION == "v3" && $COMPONENT == "setup"
-  script:
-    - echo "Testing @fortify/setup v3 bootstrap"
-    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-    - fcli --version
-  variables:
-    FCLI_BOOTSTRAP_URL: ${FCLI_URL}
-
-# v3 FoD ast-scan test
-test-v3-fod-ast-scan:
-  stage: test
-  image: maven:3-openjdk-17
-  rules:
-    - if: $VERSION == "v3" && $PRODUCT == "fod" && $COMPONENT == "ast-scan"
-  script:
-    - echo "Testing @fortify/setup v3 with fcli action run ci for FoD"
-    - cd ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
-    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-    - npx @fortify/setup@v2 env gitlab
-    - fcli action run ci
-  variables:
-    FCLI_BOOTSTRAP_URL: ${FCLI_URL}
-    FOD_URL: ${FCLI_FT_FOD_URL}
-    FOD_CLIENT_ID: ${FCLI_FT_FOD_CLIENT_ID}
-    FOD_CLIENT_SECRET: ${FCLI_FT_FOD_CLIENT_SECRET}
-    FOD_RELEASE: ${FORTIFY_RELEASE}
-
-# v3 SSC ast-scan test
-test-v3-ssc-ast-scan:
-  stage: test
-  image: maven:3-openjdk-17
-  rules:
-    - if: $VERSION == "v3" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
-  script:
-    - echo "Testing @fortify/setup v3 with fcli action run ci for SSC"
-    - cd ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
-    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-    - npx @fortify/setup@v2 env gitlab
-    - fcli action run ci
-  variables:
-    FCLI_BOOTSTRAP_URL: ${FCLI_URL}
-    SSC_URL: ${FCLI_FT_SSC_URL}
-    SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}
-    SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
-    SSC_APPVERSION: ${FORTIFY_RELEASE}
-    SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
-    SAST_SCAN_EXTRA_OPTS: --no-replace

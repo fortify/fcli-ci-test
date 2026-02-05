@@ -118,34 +118,48 @@ jobs:
           echo "### Test Combinations" >> $GITHUB_STEP_SUMMARY
           echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
 
-  # Sync GitLab repository and secrets once before running any GitLab tests
-  sync-gitlab:
-    name: Sync GitLab Repository
+  # Sync external CI repositories (GitLab, ADO) once before running tests
+  sync-external-repos:
+    name: Sync ${{ matrix.platform }} Repository
     needs: prepare-matrix
     runs-on: ubuntu-latest
-    if: contains(needs.prepare-matrix.outputs.matrix, 'gitlab')
+    strategy:
+      matrix:
+        include:
+          - platform: gitlab
+            condition: ${{ contains(needs.prepare-matrix.outputs.matrix, 'gitlab') }}
+          - platform: ado
+            condition: ${{ contains(needs.prepare-matrix.outputs.matrix, 'ado') }}
+    if: matrix.condition == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Sync GitLab repository and secrets
+      - name: Sync repository
         run: |
           set -e
           
-          # Read GitLab config
-          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
-          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          # Read platform config
+          PLATFORM="${{ matrix.platform }}"
+          REPO_URL=$(jq -r '.repoUrl' "ci/$PLATFORM/config.json")
+          PIPELINE_FILE=$([ "$PLATFORM" = "gitlab" ] && echo ".gitlab-ci.yml" || echo "azure-pipelines.yml")
           
-          echo "GitLab Project: $GITLAB_PROJECT_ID"
+          echo "Syncing $PLATFORM repository: $REPO_URL"
           
-          # Clone GitLab repo to temp directory
+          # Set up authentication based on platform
+          if [ "$PLATFORM" = "gitlab" ]; then
+            AUTH_URL="https://oauth2:$GITLAB_TOKEN@${REPO_URL#https://}"
+          else
+            AUTH_URL="https://$ADO_PAT@${REPO_URL#https://}"
+          fi
+          
+          # Clone repo to temp directory
           temp_dir=$(mktemp -d)
-          git clone "https://oauth2:$GITLAB_TOKEN@${GITLAB_REPO_URL#https://}" "$temp_dir"
+          git clone "$AUTH_URL" "$temp_dir"
           cd "$temp_dir"
           
-          # Check for changes
-          echo "Checking for pipeline or source changes..."
           # Check if main branch exists
+          echo "Checking for pipeline or source changes..."
           if git ls-remote --heads origin main | grep -q main; then
             git fetch origin main
           else
@@ -153,17 +167,10 @@ jobs:
             git checkout -b main
           fi
           
-          # Copy all GitLab CI files
-          echo "Syncing ci/gitlab files..."
-          rm -rf ci
-          mkdir -p ci
-          cp -r "$GITHUB_WORKSPACE/ci/gitlab" ci/
-          
-          # Copy main pipeline file to root
-          cp ci/gitlab/.gitlab-ci.yml .gitlab-ci.yml
-          
-          # Copy README to root
-          cp ci/gitlab/README.md README.md
+          # Copy all CI files for this platform to root
+          echo "Syncing ci/$PLATFORM files to root..."
+          cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/"* .
+          cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/".* . 2>/dev/null || true
           
           # Copy sources
           rm -rf sources
@@ -171,7 +178,7 @@ jobs:
           
           # Check if anything changed (new files or modified files)
           if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            echo "Changes detected, pushing to GitLab..."
+            echo "Changes detected, pushing to $PLATFORM..."
             git config user.name "fcli-ci-test"
             git config user.email "fcli-ci-test@fortify.github.io"
             git add .
@@ -184,18 +191,28 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           rm -rf "$temp_dir"
           
+          echo "✓ Repository synced successfully"
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+      
+      - name: Sync GitLab secrets
+        if: matrix.platform == 'gitlab'
+        run: |
+          set -e
+          
+          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
+          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          
           echo "Syncing secrets to GitLab CI/CD variables..."
-          # Sync secrets via GitLab API
           for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
             secret_value="${!secret_name}"
             if [ -n "$secret_value" ]; then
               echo "Updating variable: $secret_name"
-              # Delete existing variable (ignore errors)
               curl -s -X DELETE \
                 "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
                 -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
               
-              # Create variable using JSON format
               curl -f -X POST \
                 "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
                 -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
@@ -209,80 +226,21 @@ jobs:
             fi
           done
           
-          echo "✓ GitLab repository and secrets synced successfully"
+          echo "✓ GitLab secrets synced successfully"
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
           FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
-
-  # Sync ADO repository and secrets once before running any ADO tests
-  sync-ado:
-    name: Sync Azure DevOps Repository
-    needs: prepare-matrix
-    runs-on: ubuntu-latest
-    if: contains(needs.prepare-matrix.outputs.matrix, 'ado')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
       
-      - name: Sync ADO repository and secrets
+      - name: Sync ADO secrets
+        if: matrix.platform == 'ado'
         run: |
           set -e
           
-          # Read ADO config
-          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
           ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
           ADO_PROJ="${{ secrets.ADO_PROJECT }}"
-          
-          echo "Azure DevOps: $ADO_ORG/$ADO_PROJ"
-          
-          # Clone ADO repo to temp directory
-          temp_dir=$(mktemp -d)
-          git clone "https://$ADO_PAT@${ADO_REPO_URL#https://}" "$temp_dir"
-          cd "$temp_dir"
-          
-          # Check for changes
-          echo "Checking for pipeline or source changes..."
-          # Check if main branch exists
-          if git ls-remote --heads origin main | grep -q main; then
-            git fetch origin main
-          else
-            echo "Repository is empty or main branch doesn't exist yet"
-            git checkout -b main
-          fi
-          
-          # Copy all ADO CI files
-          echo "Syncing ci/ado files..."
-          rm -rf ci
-          mkdir -p ci
-          cp -r "$GITHUB_WORKSPACE/ci/ado" ci/
-          
-          # Copy main pipeline file to root
-          cp ci/ado/azure-pipelines.yml azure-pipelines.yml
-          
-          # Copy README to root
-          cp ci/ado/README.md README.md
-          
-          # Copy sources
-          rm -rf sources
-          cp -r "$GITHUB_WORKSPACE/sources" .
-          
-          # Check if anything changed (new files or modified files)
-          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            echo "Changes detected, pushing to Azure DevOps..."
-            git config user.name "fcli-ci-test"
-            git config user.email "fcli-ci-test@fortify.github.io"
-            git add .
-            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
-            git push --force origin HEAD:main
-          else
-            echo "No changes detected, skipping git push"
-          fi
-          
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$temp_dir"
           
           echo "Syncing secrets to Azure DevOps Variable Group..."
           # Get or create variable group
@@ -353,7 +311,7 @@ jobs:
               $variables_json
             }" > /dev/null
           
-          echo "✓ Azure DevOps repository and secrets synced successfully"
+          echo "✓ Azure DevOps secrets synced successfully"
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
           FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
@@ -365,13 +323,12 @@ jobs:
 
   test:
     name: Test ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
-    needs: [prepare-matrix, sync-gitlab, sync-ado]
+    needs: [prepare-matrix, sync-external-repos]
     runs-on: ubuntu-latest
     if: |
       always() &&
       needs.prepare-matrix.outputs.matrix != '[]' &&
-      (needs.sync-gitlab.result == 'success' || needs.sync-gitlab.result == 'skipped') &&
-      (needs.sync-ado.result == 'success' || needs.sync-ado.result == 'skipped')
+      (needs.sync-external-repos.result == 'success' || needs.sync-external-repos.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:

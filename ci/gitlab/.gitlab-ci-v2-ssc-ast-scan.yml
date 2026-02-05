@@ -8,7 +8,7 @@ include:
       - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
 
 variables:
-  FCLI_BOOTSTRAP_URL: ${FCLI_URL}
+  FCLI_URL: ${FCLI_URL}
   SOURCE_DIR: ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
   SSC_URL: ${FCLI_FT_SSC_URL}
   SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}
