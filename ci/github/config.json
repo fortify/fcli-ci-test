@@ -1,6 +1,7 @@
 {
   "repoUrl": "https://github.com/fortify/fcli-ci-test",
   "supportedOs": ["linux", "windows", "mac"],
+  "versions": ["v2", "v3"],
   "variableNames": [
     "FCLI_FT_FOD_URL",
     "FCLI_FT_SSC_URL"

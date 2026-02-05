@@ -1,6 +1,7 @@
 {
   "repoUrl": "https://gitlab.com/Fortify/components/fcli-ci-test",
   "supportedOs": ["linux"],
+  "versions": ["v2", "v3"],
   "variableNames": [
     "FCLI_FT_FOD_URL",
     "FCLI_FT_SSC_URL"
