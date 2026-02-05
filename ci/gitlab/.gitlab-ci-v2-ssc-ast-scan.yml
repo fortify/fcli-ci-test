@@ -1,6 +1,6 @@
 # v2 SSC ast-scan component test
 include:
-  - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@2
+  - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@1
     inputs:
       stage: test
       job-name: test-v2-ssc-ast-scan

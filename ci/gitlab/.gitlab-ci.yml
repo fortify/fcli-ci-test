@@ -12,3 +12,15 @@ include:
   - local: .gitlab-ci-v2-ssc-ast-scan.yml
     rules:
       - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
+# Fallback job when no variables are set (e.g., direct push)
+stages:
+  - .pre
+
+no-op:
+  stage: .pre
+  rules:
+    - if: $VERSION == null || $COMPONENT == null
+  script:
+    - echo "Pipeline requires trigger variables (VERSION, COMPONENT, etc.)"
+    - echo "This job prevents 'no visible jobs' error on direct push"
+    - exit 0
