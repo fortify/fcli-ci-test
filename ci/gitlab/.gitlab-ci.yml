@@ -68,7 +68,7 @@ test-v3-setup:
     - if: $VERSION == "v3" && $COMPONENT == "setup"
   script:
     - echo "Testing @fortify/setup v3 bootstrap"
-    - npx @fortify/setup@latest env init --tools=fcli:bootstrapped
+    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
     - fcli --version
   variables:
     FCLI_BOOTSTRAP_URL: ${FCLI_URL}
@@ -82,8 +82,8 @@ test-v3-fod-ast-scan:
   script:
     - echo "Testing @fortify/setup v3 with fcli action run ci for FoD"
     - cd ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
-    - npx @fortify/setup@latest env init --tools=fcli:bootstrapped
-    - npx @fortify/setup@latest env gitlab
+    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+    - npx @fortify/setup@v2 env gitlab
     - fcli action run ci
   variables:
     FCLI_BOOTSTRAP_URL: ${FCLI_URL}
@@ -101,8 +101,8 @@ test-v3-ssc-ast-scan:
   script:
     - echo "Testing @fortify/setup v3 with fcli action run ci for SSC"
     - cd ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
-    - npx @fortify/setup@latest env init --tools=fcli:bootstrapped
-    - npx @fortify/setup@latest env gitlab
+    - npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+    - npx @fortify/setup@v2 env gitlab
     - fcli action run ci
   variables:
     FCLI_BOOTSTRAP_URL: ${FCLI_URL}

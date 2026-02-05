@@ -29,8 +29,8 @@ jobs:
           targetType: 'inline'
           script: |
             echo "Testing @fortify/setup $(VERSION) bootstrap"
-            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
-            npx @fortify/setup@latest env ado
+            npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+            npx @fortify/setup@v2 env ado
             fcli --version
         env:
           FCLI_BOOTSTRAP_URL: $(FCLI_URL)
@@ -49,8 +49,8 @@ jobs:
           script: |
             echo "Testing @fortify/setup $(VERSION) with fcli action run ci for FoD"
             cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
-            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
-            npx @fortify/setup@latest env ado
+            npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+            npx @fortify/setup@v2 env ado
             fcli action run ci
         env:
           FCLI_BOOTSTRAP_URL: $(FCLI_URL)
@@ -73,8 +73,8 @@ jobs:
           script: |
             echo "Testing @fortify/setup $(VERSION) with fcli action run ci for SSC"
             cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
-            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
-            npx @fortify/setup@latest env ado
+            npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+            npx @fortify/setup@v2 env ado
             fcli action run ci
         env:
           FCLI_BOOTSTRAP_URL: $(FCLI_URL)
