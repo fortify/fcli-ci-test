@@ -24,6 +24,36 @@ on:
       fortify_release:
         description: 'Fortify release/appversion name'
         required: true
+  workflow_call:
+    inputs:
+      version:
+        description: 'Integration version (v2, v3)'
+        required: true
+        type: string
+      fcli_url:
+        description: 'Fcli artifact URL'
+        required: true
+        type: string
+      product:
+        description: 'Product (fod or ssc)'
+        required: true
+        type: string
+      component:
+        description: 'Component (setup or ast-scan)'
+        required: true
+        type: string
+      source_dir:
+        description: 'Source directory name'
+        required: true
+        type: string
+      os:
+        description: 'Operating system (linux, windows, mac)'
+        required: true
+        type: string
+      fortify_release:
+        description: 'Fortify release/appversion name'
+        required: true
+        type: string
 
 jobs:
   # Setup component test (product-agnostic)
