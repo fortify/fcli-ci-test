@@ -62,11 +62,15 @@ jobs:
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: inputs.component == 'setup'
     steps:
-      - name: Checkout
+      - name: Checkout fortify/github-action
         uses: actions/checkout@v4
+        with:
+          repository: fortify/github-action
+          ref: ${{ inputs.version }}
+          path: github-action
       
-      - name: Run fortify/github-action/setup
-        uses: fortify/github-action/setup@${{ inputs.version }}
+      - name: Run setup action
+        uses: ./github-action/setup
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
       
@@ -80,11 +84,18 @@ jobs:
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: inputs.product == 'fod' && inputs.component == 'ast-scan'
     steps:
-      - name: Checkout
+      - name: Checkout test sources
         uses: actions/checkout@v4
       
-      - name: Run fortify/github-action
-        uses: fortify/github-action@${{ inputs.version }}
+      - name: Checkout fortify/github-action
+        uses: actions/checkout@v4
+        with:
+          repository: fortify/github-action
+          ref: ${{ inputs.version }}
+          path: github-action
+      
+      - name: Run AST scan action
+        uses: ./github-action
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
           SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
@@ -99,11 +110,18 @@ jobs:
     runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: inputs.product == 'ssc' && inputs.component == 'ast-scan'
     steps:
-      - name: Checkout
+      - name: Checkout test sources
         uses: actions/checkout@v4
       
-      - name: Run fortify/github-action
-        uses: fortify/github-action@${{ inputs.version }}
+      - name: Checkout fortify/github-action
+        uses: actions/checkout@v4
+        with:
+          repository: fortify/github-action
+          ref: ${{ inputs.version }}
+          path: github-action
+      
+      - name: Run AST scan action
+        uses: ./github-action
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
           SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
