@@ -1,0 +1,11 @@
+# v2 setup component test
+include:
+  - component: $CI_SERVER_FQDN/Fortify/components/fcli/linux@2
+    inputs:
+      stage: test
+      job-name: test-v2-setup
+    rules:
+      - if: $VERSION == "v2" && $COMPONENT == "setup"
+
+variables:
+  FCLI_BOOTSTRAP_URL: ${FCLI_URL}

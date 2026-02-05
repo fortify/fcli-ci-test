@@ -153,11 +153,17 @@ jobs:
             git checkout -b main
           fi
           
-          # Copy pipeline file
-          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
+          # Copy all GitLab CI files
+          echo "Syncing ci/gitlab files..."
+          rm -rf ci
+          mkdir -p ci
+          cp -r "$GITHUB_WORKSPACE/ci/gitlab" ci/
           
-          # Copy README
-          cp "$GITHUB_WORKSPACE/ci/gitlab/README.md" README.md
+          # Copy main pipeline file to root
+          cp ci/gitlab/.gitlab-ci.yml .gitlab-ci.yml
+          
+          # Copy README to root
+          cp ci/gitlab/README.md README.md
           
           # Copy sources
           rm -rf sources
@@ -247,11 +253,17 @@ jobs:
             git checkout -b main
           fi
           
-          # Copy pipeline file
-          cp "$GITHUB_WORKSPACE/ci/ado/azure-pipelines.yml" azure-pipelines.yml
+          # Copy all ADO CI files
+          echo "Syncing ci/ado files..."
+          rm -rf ci
+          mkdir -p ci
+          cp -r "$GITHUB_WORKSPACE/ci/ado" ci/
           
-          # Copy README
-          cp "$GITHUB_WORKSPACE/ci/ado/README.md" README.md
+          # Copy main pipeline file to root
+          cp ci/ado/azure-pipelines.yml azure-pipelines.yml
+          
+          # Copy README to root
+          cp ci/ado/README.md README.md
           
           # Copy sources
           rm -rf sources

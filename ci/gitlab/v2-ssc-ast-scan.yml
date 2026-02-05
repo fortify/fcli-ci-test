@@ -1,0 +1,18 @@
+# v2 SSC ast-scan component test
+include:
+  - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@2
+    inputs:
+      stage: test
+      job-name: test-v2-ssc-ast-scan
+    rules:
+      - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
+
+variables:
+  FCLI_BOOTSTRAP_URL: ${FCLI_URL}
+  SOURCE_DIR: ${CI_PROJECT_DIR}/sources/${SOURCE_DIR}
+  SSC_URL: ${FCLI_FT_SSC_URL}
+  SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}
+  SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
+  SSC_APPVERSION: ${FORTIFY_RELEASE}
+  SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+  SAST_SCAN_EXTRA_OPTS: --no-replace
