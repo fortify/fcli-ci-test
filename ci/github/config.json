@@ -1,0 +1,13 @@
+{
+  "repoUrl": "https://github.com/fortify/fcli-ci-test",
+  "supportedOs": ["linux", "windows", "mac"],
+  "versions": ["v2", "v3"],
+  "secretNames": [
+    "FCLI_FT_FOD_URL",
+    "FCLI_FT_FOD_CLIENT_ID",
+    "FCLI_FT_FOD_CLIENT_SECRET",
+    "FCLI_FT_SSC_URL",
+    "FCLI_FT_SSC_TOKEN",
+    "FCLI_FT_SC_SAST_TOKEN"
+  ]
+}

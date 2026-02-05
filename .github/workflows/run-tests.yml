@@ -1,0 +1,537 @@
+name: Run Integration Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      fcli_version:
+        description: 'Fcli version (tag from GitHub releases)'
+        required: false
+        default: 'dev_v3.x'
+      products:
+        description: 'Products to test (comma-separated: fod, ssc)'
+        required: false
+        default: 'fod,ssc'
+      components:
+        description: 'Components to test (comma-separated: setup, ast-scan)'
+        required: false
+        default: 'setup,ast-scan'
+      source_dirs:
+        description: 'Source directories to test (comma-separated)'
+        required: false
+        default: 'eightball'
+      ci_systems:
+        description: 'CI systems to test (comma-separated: github:v2, github:v3, gitlab:v2, ado:v1)'
+        required: false
+        default: 'github:v2,github:v3,gitlab:v2,ado:v1'
+      os:
+        description: 'Operating systems to test (comma-separated: linux, windows, mac)'
+        required: false
+        default: 'linux'
+
+concurrency:
+  group: fcli-ci-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-matrix:
+    name: Prepare Test Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.create-matrix.outputs.matrix }}
+      summary: ${{ steps.create-matrix.outputs.summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create test matrix
+        id: create-matrix
+        run: |
+          # Parse inputs
+          IFS=',' read -ra CI_SYSTEMS <<< "${{ github.event.inputs.ci_systems }}"
+          IFS=',' read -ra PRODUCTS <<< "${{ github.event.inputs.products }}"
+          IFS=',' read -ra COMPONENTS <<< "${{ github.event.inputs.components }}"
+          IFS=',' read -ra SOURCE_DIRS <<< "${{ github.event.inputs.source_dirs }}"
+          IFS=',' read -ra OS_LIST <<< "${{ github.event.inputs.os }}"
+          
+          # Build matrix with filtering
+          matrix_items=()
+          filtered_count=0
+          filtered_items=""
+          
+          for ci_system in "${CI_SYSTEMS[@]}"; do
+            platform=$(echo "$ci_system" | cut -d: -f1)
+            version=$(echo "$ci_system" | cut -d: -f2)
+            
+            # Read supported OS from config
+            supported_os=$(jq -r '.supportedOs[]' "ci/$platform/config.json" 2>/dev/null | tr '\n' ',')
+            
+            for component in "${COMPONENTS[@]}"; do
+              # For setup component, no need to iterate products (product-agnostic)
+              if [ "$component" = "setup" ]; then
+                for os in "${OS_LIST[@]}"; do
+                  if echo "$supported_os" | grep -q "$os"; then
+                    matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\"}")
+                  else
+                    ((filtered_count++))
+                    filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                  fi
+                done
+              else
+                # For ast-scan, iterate products and source_dirs
+                for product in "${PRODUCTS[@]}"; do
+                  for source_dir in "${SOURCE_DIRS[@]}"; do
+                    for os in "${OS_LIST[@]}"; do
+                      if echo "$supported_os" | grep -q "$os"; then
+                        matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\"}")
+                      else
+                        ((filtered_count++))
+                        filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                      fi
+                    done
+                  done
+                done
+              fi
+            done
+          done
+          
+          # Create JSON array
+          matrix_json=$(printf '%s\n' "${matrix_items[@]}" | jq -s .)
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          
+          # Create summary
+          summary="Created ${#matrix_items[@]} test combinations."
+          if [ $filtered_count -gt 0 ]; then
+            summary="$summary Filtered out $filtered_count incompatible combinations:\n$filtered_items"
+          fi
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$summary" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Display matrix summary
+        run: |
+          echo "## Test Matrix Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.create-matrix.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Combinations" >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
+
+  test:
+    name: Test ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    if: needs.prepare-matrix.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Read CI config
+        id: config
+        run: |
+          repo_url=$(jq -r '.repoUrl' "ci/${{ matrix.platform }}/config.json")
+          echo "repo_url=$repo_url" >> $GITHUB_OUTPUT
+          
+          # Check if this is the same repo
+          if [ "$repo_url" = "https://github.com/${{ github.repository }}" ]; then
+            echo "is_local=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_local=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Construct fcli URL
+        id: fcli-url
+        run: |
+          os="${{ matrix.os }}"
+          version="${{ github.event.inputs.fcli_version }}"
+          
+          if [ "$os" = "windows" ]; then
+            artifact="fcli-windows.zip"
+          elif [ "$os" = "mac" ]; then
+            artifact="fcli-mac.tgz"
+          else
+            artifact="fcli-linux.tgz"
+          fi
+          
+          url="https://github.com/fortify/fcli/releases/download/$version/$artifact"
+          echo "url=$url" >> $GITHUB_OUTPUT
+      
+      - name: Trigger GitHub test
+        if: matrix.platform == 'github'
+        run: |
+          # Trigger workflow and capture the time
+          trigger_time=$(date -u +%s)
+          
+          gh workflow run test-pipeline.yml \
+            --ref ${{ github.ref }} \
+            -f version=${{ matrix.version }} \
+            -f fcli_url=${{ steps.fcli-url.outputs.url }} \
+            -f product=${{ matrix.product }} \
+            -f component=${{ matrix.component }} \
+            -f source_dir=${{ matrix.source_dir }} \
+            -f os=${{ matrix.os }}
+          
+          echo "Triggered GitHub workflow, waiting for run to start..."
+          sleep 10
+          
+          # Find the most recent run that started after our trigger
+          run_id=$(gh run list \
+            --workflow=test-pipeline.yml \
+            --branch=${{ github.ref_name }} \
+            --limit=10 \
+            --json databaseId,createdAt,status \
+            --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
+          
+          if [ -z "$run_id" ]; then
+            echo "Error: Could not find triggered workflow run"
+            exit 1
+          fi
+          
+          echo "Found workflow run ID: $run_id"
+          echo "Polling for completion (timeout: 30 minutes)..."
+          
+          # Poll for completion
+          timeout=1800  # 30 minutes
+          elapsed=0
+          interval=30
+          
+          while [ $elapsed -lt $timeout ]; do
+            status=$(gh run view $run_id --json status,conclusion --jq '.status + ":" + .conclusion')
+            run_status=$(echo $status | cut -d: -f1)
+            run_conclusion=$(echo $status | cut -d: -f2)
+            
+            echo "[$elapsed s] Status: $run_status, Conclusion: $run_conclusion"
+            
+            if [ "$run_status" = "completed" ]; then
+              if [ "$run_conclusion" = "success" ]; then
+                echo "✓ Test passed!"
+                exit 0
+              else
+                echo "✗ Test failed with conclusion: $run_conclusion"
+                gh run view $run_id --log-failed
+                exit 1
+              fi
+            fi
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          echo "✗ Test timed out after $timeout seconds"
+          exit 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Sync and trigger GitLab test
+        if: matrix.platform == 'gitlab'
+        run: |
+          set -e
+          
+          # Read GitLab config
+          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
+          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          
+          echo "GitLab Project: $GITLAB_PROJECT_ID"
+          
+          # Clone GitLab repo to temp directory
+          set -e
+          
+          # Read ADO config
+          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
+          ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
+          ADO_PROJ="${{ secrets.ADO_PROJECT }}"
+          
+          echo "Azure DevOps: $ADO_ORG/$ADO_PROJ"
+          
+          # Clone ADO repo to temp directory
+          temp_dir=$(mktemp -d)
+          git clone "https://${{ secrets.ADO_PAT }}@${ADO_REPO_URL#https://}" "$temp_dir"
+          cd "$temp_dir"
+          
+          # Check for changes
+          echo "Checking for pipeline or source changes..."
+          git fetch origin main
+          
+          # Copy pipeline file
+          cp "$GITHUB_WORKSPACE/ci/ado/azure-pipelines.yml" azure-pipelines.yml
+          
+          # Copy sources
+          rm -rf sources
+          cp -r "$GITHUB_WORKSPACE/sources" .
+          
+          # Check if anything changed
+          if git diff --quiet; then
+            echo "No changes detected, skipping git push"
+          else
+            echo "Changes detected, pushing to Azure DevOps..."
+            git config user.name "fcli-ci-test"
+            git config user.email "fcli-ci-test@fortify.github.io"
+            git add .
+            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git push --force origin HEAD:main
+          fi
+          
+          cd "$GITHUB_WORKSPACE"
+          rm -rf "$temp_dir"
+          
+          echo "Syncing secrets to Azure DevOps Variable Group..."
+          # Get or create variable group
+          vg_response=$(curl -f -s \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
+            -H "Content-Type: application/json")
+          
+          # Find fcli-ci-test variable group
+          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
+          
+          if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
+            echo "Creating variable group..."
+            vg_create=$(curl -f -s -X POST \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+              -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "fcli-ci-test",
+                "description": "fcli CI test variables",
+                "type": "Vsts",
+                "variables": {}
+              }')
+            vg_id=$(echo "$vg_create" | jq -r '.id')
+          fi
+          
+          echo "Variable Group ID: $vg_id"
+          
+          # Build variables JSON
+          variables_json='{"variables":{'
+          first=true
+          for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
+            secret_value="${!secret_name}"
+            if [ -n "$secret_value" ]; then
+              if [ "$first" = false ]; then
+                variables_json="$variables_json,"
+              fi
+              variables_json="$variables_json\"$secret_name\":{\"value\":\"$secret_value\",\"isSecret\":true}"
+              first=false
+            fi
+          done
+          variables_json="$variables_json}}"
+          
+          # Update variable group
+          echo "Updating variable group with secrets..."
+          curl -f -X PUT \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
+            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"id\": $vg_id,
+              \"name\": \"fcli-ci-test\",
+              \"type\": \"Vsts\",
+              $variables_json
+            }" > /dev/null
+          
+          echo "Triggering Azure DevOps pipeline..."
+          build_response=$(curl -f -s -X POST \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/1/runs?api-version=7.1-preview.1" \
+            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"resources\": {
+                \"repositories\": {
+                  \"self\": {
+                    \"refName\": \"refs/heads/main\"
+                  }
+                }
+              },
+              \"templateParameters\": {
+                \"VERSION\": \"${{ matrix.version }}\",
+                \"FCLI_URL\": \"${{ steps.fcli-url.outputs.url }}\",
+                \"PRODUCT\": \"${{ matrix.product }}\",
+                \"COMPONENT\": \"${{ matrix.component }}\",
+                \"SOURCE_DIR\": \"\$(Build.SourcesDirectory)/sources/${{ matrix.source_dir }}\",
+                \"OS\": \"${{ matrix.os }}\"
+              }
+            }")
+          
+          build_id=$(echo "$build_response" | jq -r '.id')
+          echo "Build ID: $build_id"
+          
+          echo "Polling for completion (timeout: 30 minutes)..."
+          timeout=1800
+          elapsed=0
+          interval=30
+          
+          while [ $elapsed -lt $timeout ]; do
+            build_info=$(curl -f -s \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
+              -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)")
+            
+            build_status=$(echo "$build_info" | jq -r '.status')
+            build_result=$(echo "$build_info" | jq -r '.result')
+            
+            echo "[$elapsed s] Status: $build_status, Result: $build_result"
+            
+            if [ "$build_status" = "completed" ]; then
+              if [ "$build_result" = "succeeded" ]; then
+                echo "✓ Test passed!"
+                exit 0
+              else
+                echo "✗ Test failed with result: $build_result"
+                # Get failed job logs
+                curl -f -s \
+                  "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
+                  -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" | \
+                  jq '.records[] | select(.result == "failed") | {name, type, result}'
+                exit 1
+              fi
+            fi
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          echo "✗ Test timed out after $timeout seconds"
+          exit 1
+        env:
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+          ADO_ORGANIZATION: ${{ secrets.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
+          FCLI_FT_FOD_URL: ${{ secrets.FCLI_FT_FOD_URL }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FCLI_FT_SSC_URL: ${{ secrets.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKENe changes..."
+          git fetch origin main
+          
+          # Copy pipeline file
+          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
+          
+          # Copy sources
+          rm -rf sources
+          cp -r "$GITHUB_WORKSPACE/sources" .
+          
+          # Check if anything changed
+          if git diff --quiet; then
+            echo "No changes detected, skipping git push"
+          else
+            echo "Changes detected, pushing to GitLab..."
+            git config user.name "fcli-ci-test"
+            git config user.email "fcli-ci-test@fortify.github.io"
+            git add .
+            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git push --force origin HEAD:main
+          fi
+          
+          cd "$GITHUB_WORKSPACE"
+          rm -rf "$temp_dir"
+          
+          echo "Syncing secrets to GitLab CI/CD variables..."
+          # Sync secrets via GitLab API
+          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
+            secret_value="${!secret_name}"
+            if [ -n "$secret_value" ]; then
+              echo "Updating variable: $secret_name"
+              # Delete existing variable (ignore errors)
+              curl -f -X DELETE \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+              
+              # Create variable
+              curl -f -X POST \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                -F "key=$secret_name" \
+                -F "value=$secret_value" \
+                -F "masked=true" \
+                -F "protected=false"
+            fi
+          done
+          
+          echo "Triggering GitLab pipeline..."
+          pipeline_response=$(curl -f -X POST \
+            "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
+            -F "token=$GITLAB_TRIGGER_TOKEN" \
+            -F "ref=main" \
+            -F "variables[VERSION]=${{ matrix.version }}" \
+            -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
+            -F "variables[PRODUCT]=${{ matrix.product }}" \
+            -F "variables[COMPONENT]=${{ matrix.component }}" \
+            -F "variables[SOURCE_DIR]=\$CI_PROJECT_DIR/sources/${{ matrix.source_dir }}" \
+            -F "variables[OS]=${{ matrix.os }}")
+          
+          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+          echo "Pipeline ID: $pipeline_id"
+          
+          echo "Polling for completion (timeout: 30 minutes)..."
+          timeout=1800
+          elapsed=0
+          interval=30
+          
+          while [ $elapsed -lt $timeout ]; do
+            pipeline_status=$(curl -f -s \
+              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
+              -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
+            
+            echo "[$elapsed s] Status: $pipeline_status"
+            
+            case "$pipeline_status" in
+              success)
+                echo "✓ Test passed!"
+                exit 0
+                ;;
+              failed|canceled|skipped)
+                echo "✗ Test failed with status: $pipeline_status"
+                curl -f -s \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}'
+                exit 1
+                ;;
+              running|pending|created|waiting_for_resource|preparing)
+                # Continue polling
+                ;;
+              *)
+                echo "Unknown status: $pipeline_status"
+                exit 1
+                ;;
+            esac
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          echo "✗ Test timed out after $timeout seconds"
+          exit 1
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
+          FCLI_FT_FOD_URL: ${{ secrets.FCLI_FT_FOD_URL }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FCLI_FT_SSC_URL: ${{ secrets.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+      
+      - name: Sync and trigger ADO test
+        if: matrix.platform == 'ado'
+        run: |
+          # TODO: Implement ADO sync and trigger
+          echo "ADO testing not yet implemented"
+        env:
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+          ADO_ORGANIZATION: ${{ secrets.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
+
+  summary:
+    name: Test Summary
+    needs: [prepare-matrix, test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Create summary
+        run: |
+          echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY

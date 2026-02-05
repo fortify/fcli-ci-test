@@ -1,0 +1,82 @@
+# Expected variables from trigger:
+# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS
+
+trigger: none
+
+pool:
+  vmImage: $(VM_IMAGE)
+
+variables:
+  - name: VM_IMAGE
+    ${{ if eq(variables['OS'], 'linux') }}:
+      value: 'ubuntu-latest'
+    ${{ if eq(variables['OS'], 'windows') }}:
+      value: 'windows-latest'
+    ${{ if eq(variables['OS'], 'mac') }}:
+      value: 'macOS-latest'
+
+jobs:
+  # Setup test (product-agnostic)
+  - job: test_setup
+    displayName: 'Setup Test'
+    condition: and(succeeded(), eq(variables['COMPONENT'], 'setup'))
+    steps:
+      - checkout: self
+      
+      - task: Bash@3
+        displayName: 'Test setup'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Testing @fortify/setup $(VERSION) bootstrap"
+            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
+            npx @fortify/setup@latest env ado
+            fcli --version
+        env:
+          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+
+  # FoD ast-scan test
+  - job: test_fod_ast_scan
+    displayName: 'FoD AST Scan Test'
+    condition: and(succeeded(), eq(variables['PRODUCT'], 'fod'), eq(variables['COMPONENT'], 'ast-scan'))
+    steps:
+      - checkout: self
+      
+      - task: Bash@3
+        displayName: 'Test FoD ast-scan'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Testing @fortify/setup $(VERSION) with fcli action run ci for FoD"
+            cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
+            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
+            npx @fortify/setup@latest env ado
+            fcli action run ci
+        env:
+          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+          FOD_URL: $(FCLI_FT_FOD_URL)
+          FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
+          FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
+
+  # SSC ast-scan test
+  - job: test_ssc_ast_scan
+    displayName: 'SSC AST Scan Test'
+    condition: and(succeeded(), eq(variables['PRODUCT'], 'ssc'), eq(variables['COMPONENT'], 'ast-scan'))
+    steps:
+      - checkout: self
+      
+      - task: Bash@3
+        displayName: 'Test SSC ast-scan'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Testing @fortify/setup $(VERSION) with fcli action run ci for SSC"
+            cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
+            npx @fortify/setup@latest env init --tools=fcli:bootstrapped
+            npx @fortify/setup@latest env ado
+            fcli action run ci
+        env:
+          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+          SSC_URL: $(FCLI_FT_SSC_URL)
+          SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
+          SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)
