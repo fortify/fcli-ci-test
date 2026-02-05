@@ -125,17 +125,23 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - platform: gitlab
-            condition: ${{ contains(needs.prepare-matrix.outputs.matrix, 'gitlab') }}
-          - platform: ado
-            condition: ${{ contains(needs.prepare-matrix.outputs.matrix, 'ado') }}
-    if: matrix.condition == 'true'
+        platform: [gitlab, ado]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
+      - name: Check if platform is needed
+        id: check
+        run: |
+          if echo '${{ needs.prepare-matrix.outputs.matrix }}' | grep -q '"platform":"${{ matrix.platform }}"'; then
+            echo "needed=true" >> $GITHUB_OUTPUT
+          else
+            echo "needed=false" >> $GITHUB_OUTPUT
+            echo "Skipping ${{ matrix.platform }} - not in test matrix"
+          fi
+      
       - name: Sync repository
+        if: steps.check.outputs.needed == 'true'
         run: |
           set -e
           
@@ -197,7 +203,7 @@ jobs:
           ADO_PAT: ${{ secrets.ADO_PAT }}
       
       - name: Sync GitLab secrets
-        if: matrix.platform == 'gitlab'
+        if: steps.check.outputs.needed == 'true' && matrix.platform == 'gitlab'
         run: |
           set -e
           
@@ -235,7 +241,7 @@ jobs:
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
       
       - name: Sync ADO secrets
-        if: matrix.platform == 'ado'
+        if: steps.check.outputs.needed == 'true' && matrix.platform == 'ado'
         run: |
           set -e
           
