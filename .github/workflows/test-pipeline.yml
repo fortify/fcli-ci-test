@@ -71,6 +71,8 @@ jobs:
       
       - name: Run setup action
         uses: ./github-action/setup
+        with:
+          fcli: bootstrapped
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
       
