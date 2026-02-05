@@ -46,12 +46,21 @@ jobs:
       - name: Create test matrix
         id: create-matrix
         run: |
+          set -x  # Enable debug output
+          
           # Parse inputs
           IFS=',' read -ra CI_SYSTEMS <<< "${{ github.event.inputs.ci_systems }}"
           IFS=',' read -ra PRODUCTS <<< "${{ github.event.inputs.products }}"
           IFS=',' read -ra COMPONENTS <<< "${{ github.event.inputs.components }}"
           IFS=',' read -ra SOURCE_DIRS <<< "${{ github.event.inputs.source_dirs }}"
           IFS=',' read -ra OS_LIST <<< "${{ github.event.inputs.os }}"
+          
+          echo "Input parameters:"
+          echo "  CI_SYSTEMS: ${CI_SYSTEMS[@]}"
+          echo "  PRODUCTS: ${PRODUCTS[@]}"
+          echo "  COMPONENTS: ${COMPONENTS[@]}"
+          echo "  SOURCE_DIRS: ${SOURCE_DIRS[@]}"
+          echo "  OS_LIST: ${OS_LIST[@]}"
           
           # Build matrix with filtering
           matrix_items=()
@@ -62,16 +71,28 @@ jobs:
             platform=$(echo "$ci_system" | cut -d: -f1)
             version=$(echo "$ci_system" | cut -d: -f2)
             
+            echo "Processing CI system: $ci_system (platform=$platform, version=$version)"
+            
+            # Check if config file exists
+            if [ ! -f "ci/$platform/config.json" ]; then
+              echo "ERROR: Config file ci/$platform/config.json not found"
+              continue
+            fi
+            
             # Read supported OS from config
             supported_os=$(jq -r '.supportedOs[]' "ci/$platform/config.json" 2>/dev/null | tr '\n' ',')
+            echo "  Supported OS for $platform: $supported_os"
             
             for component in "${COMPONENTS[@]}"; do
+              echo "  Processing component: $component"
               # For setup component, no need to iterate products (product-agnostic)
               if [ "$component" = "setup" ]; then
                 for os in "${OS_LIST[@]}"; do
                   if echo "$supported_os" | grep -q "$os"; then
+                    echo "    Adding: $ci_system / $component / $os"
                     matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\"}")
                   else
+                    echo "    Filtering: $ci_system + $os (not supported)"
                     ((filtered_count++))
                     filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
                   fi
@@ -82,8 +103,10 @@ jobs:
                   for source_dir in "${SOURCE_DIRS[@]}"; do
                     for os in "${OS_LIST[@]}"; do
                       if echo "$supported_os" | grep -q "$os"; then
+                        echo "    Adding: $ci_system / $product / $component / $source_dir / $os"
                         matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\"}")
                       else
+                        echo "    Filtering: $ci_system + $os (not supported)"
                         ((filtered_count++))
                         filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
                       fi
@@ -94,8 +117,17 @@ jobs:
             done
           done
           
+          echo "Total matrix items: ${#matrix_items[@]}"
+          
           # Create JSON array
-          matrix_json=$(printf '%s\n' "${matrix_items[@]}" | jq -s -c .)
+          if [ ${#matrix_items[@]} -eq 0 ]; then
+            matrix_json="[]"
+          else
+            matrix_json=$(printf '%s\n' "${matrix_items[@]}" | jq -s -c .)
+          fi
+          
+          echo "Matrix JSON: $matrix_json"
+          
           echo "matrix<<EOF" >> $GITHUB_OUTPUT
           echo "$matrix_json" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
