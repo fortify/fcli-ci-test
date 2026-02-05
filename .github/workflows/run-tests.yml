@@ -95,8 +95,10 @@ jobs:
           done
           
           # Create JSON array
-          matrix_json=$(printf '%s\n' "${matrix_items[@]}" | jq -s .)
-          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          matrix_json=$(printf '%s\n' "${matrix_items[@]}" | jq -s -c .)
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$matrix_json" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           
           # Create summary
           summary="Created ${#matrix_items[@]} test combinations."
