@@ -22,11 +22,11 @@ on:
       ci_systems:
         description: 'CI systems to test (comma-separated: github:v2, github:v3, gitlab:v2, ado:v1)'
         required: false
-        default: 'github:v2,github:v3,gitlab:v2,ado:v1'
+        default: 'github:feat/fcli-ci,gitlab:v2'
       os:
         description: 'Operating systems to test (comma-separated: linux, windows, mac)'
         required: false
-        default: 'linux'
+        default: 'linux,windows'
 
 concurrency:
   group: fcli-ci-tests-${{ github.ref }}
@@ -202,7 +202,7 @@ jobs:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           ADO_PAT: ${{ secrets.ADO_PAT }}
       
-      - name: Sync GitLab secrets
+      - name: Sync GitLab secrets and variables
         if: steps.check.outputs.needed == 'true' && matrix.platform == 'gitlab'
         run: |
           set -e
@@ -210,7 +210,31 @@ jobs:
           GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
           GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
           
+          echo "Syncing variables to GitLab CI/CD variables..."
+          # Sync regular variables (non-masked)
+          for var_name in $(jq -r '.variableNames[]' ci/gitlab/config.json); do
+            var_value="${!var_name}"
+            if [ -n "$var_value" ]; then
+              echo "Updating variable: $var_name"
+              curl -s -X DELETE \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$var_name" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+              
+              curl -f -X POST \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"key\": \"$var_name\",
+                  \"value\": \"$var_value\",
+                  \"masked\": false,
+                  \"protected\": false
+                }"
+            fi
+          done
+          
           echo "Syncing secrets to GitLab CI/CD variables..."
+          # Sync secrets (masked)
           for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
             secret_value="${!secret_name}"
             if [ -n "$secret_value" ]; then
@@ -232,9 +256,11 @@ jobs:
             fi
           done
           
-          echo "✓ GitLab secrets synced successfully"
+          echo "✓ GitLab secrets and variables synced successfully"
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
           FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
