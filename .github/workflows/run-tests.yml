@@ -258,17 +258,26 @@ jobs:
           
           # Check for changes
           echo "Checking for pipeline or source changes..."
-          git fetch origin main
+          # Check if main branch exists
+          if git ls-remote --heads origin main | grep -q main; then
+            git fetch origin main
+          else
+            echo "Repository is empty or main branch doesn't exist yet"
+            git checkout -b main
+          fi
           
           # Copy pipeline file
           cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
+          
+          # Copy README
+          cp "$GITHUB_WORKSPACE/ci/gitlab/README.md" README.md
           
           # Copy sources
           rm -rf sources
           cp -r "$GITHUB_WORKSPACE/sources" .
           
           # Check if anything changed
-          if git diff --quiet; then
+          if git diff --quiet && git ls-files --others --exclude-standard | grep -q .; then
             echo "No changes detected, skipping git push"
           else
             echo "Changes detected, pushing to GitLab..."
