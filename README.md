@@ -55,11 +55,17 @@ fcli_version: v3.14.3
 ci_systems: github:v3,gitlab:v2
 ```
 
+**Test development branches (GitHub only):**
+```
+ci_systems: github:feat-ci-integration
+```
+This will test `fortify/github-action@feat-ci-integration` branch. Also supports commit SHAs.
+
 ## CI Platform Matrix
 
 | Platform | Versions | Supported OS | Notes |
 |----------|----------|--------------|-------|
-| GitHub Actions | v2, v3 | Linux, Windows, Mac | Runs inline in this repo |
+| GitHub Actions | v2, v3, branches, commits | Linux, Windows, Mac | Runs inline in this repo |
 | GitLab CI | v2, v3 | Linux | Syncs to gitlab.com/fortify/fcli-ci-test |
 | Azure DevOps | v1 | Linux, Windows, Mac | Syncs to dev.azure.com/fortify-oss/fcli-ci-test |
 
