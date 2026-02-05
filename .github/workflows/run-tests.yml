@@ -159,6 +159,18 @@ jobs:
           url="https://github.com/fortify/fcli/releases/download/$version/$artifact"
           echo "url=$url" >> $GITHUB_OUTPUT
       
+      - name: Generate Fortify release/appversion name
+        id: fortify-release
+        run: |
+          # Generate: fcli/ci-test/<platform>/<version>/<os>:<source_dir>
+          # Skip source_dir if component is setup (uses 'none')
+          if [ "${{ matrix.component }}" = "setup" ]; then
+            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}"
+          else
+            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}:${{ matrix.source_dir }}"
+          fi
+          echo "name=$release" >> $GITHUB_OUTPUT
+      
       - name: Trigger GitHub test
         if: matrix.platform == 'github'
         run: |
@@ -172,7 +184,8 @@ jobs:
             -f product=${{ matrix.product }} \
             -f component=${{ matrix.component }} \
             -f source_dir=${{ matrix.source_dir }} \
-            -f os=${{ matrix.os }}
+            -f os=${{ matrix.os }} \
+            -f fortify_release=${{ steps.fortify-release.outputs.name }}
           
           echo "Triggered GitHub workflow, waiting for run to start..."
           sleep 10
@@ -307,6 +320,20 @@ jobs:
           # Build variables JSON
           variables_json='{"variables":{'
           first=true
+          
+          # Add regular variables (URLs)
+          for var_name in $(jq -r '.variableNames[]' ci/ado/config.json); do
+            var_value="${!var_name}"
+            if [ -n "$var_value" ]; then
+              if [ "$first" = false ]; then
+                variables_json="$variables_json,"
+              fi
+              variables_json="$variables_json\"$var_name\":{\"value\":\"$var_value\",\"isSecret\":false}"
+              first=false
+            fi
+          done
+          
+          # Add secrets
           for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
             secret_value="${!secret_name}"
             if [ -n "$secret_value" ]; then
@@ -351,7 +378,8 @@ jobs:
                 \"PRODUCT\": \"${{ matrix.product }}\",
                 \"COMPONENT\": \"${{ matrix.component }}\",
                 \"SOURCE_DIR\": \"\$(Build.SourcesDirectory)/sources/${{ matrix.source_dir }}\",
-                \"OS\": \"${{ matrix.os }}\"
+                \"OS\": \"${{ matrix.os }}\",
+                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\"
               }
             }")
           
@@ -398,10 +426,10 @@ jobs:
           ADO_PAT: ${{ secrets.ADO_PAT }}
           ADO_ORGANIZATION: ${{ secrets.ADO_ORGANIZATION }}
           ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
-          FCLI_FT_FOD_URL: ${{ secrets.FCLI_FT_FOD_URL }}
+          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_URL: ${{ secrets.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKENe changes..."
           git fetch origin main
@@ -460,7 +488,9 @@ jobs:
             -F "variables[PRODUCT]=${{ matrix.product }}" \
             -F "variables[COMPONENT]=${{ matrix.component }}" \
             -F "variables[SOURCE_DIR]=\$CI_PROJECT_DIR/sources/${{ matrix.source_dir }}" \
-            -F "variables[OS]=${{ matrix.os }}")
+            -F "variables[OS]=${{ matrix.os }}" \
+            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
+            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
           
           pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
           echo "Pipeline ID: $pipeline_id"

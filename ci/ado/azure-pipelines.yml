@@ -57,6 +57,7 @@ jobs:
           FOD_URL: $(FCLI_FT_FOD_URL)
           FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
+          FOD_RELEASE: $(FORTIFY_RELEASE)
 
   # SSC ast-scan test
   - job: test_ssc_ast_scan
@@ -80,3 +81,4 @@ jobs:
           SSC_URL: $(FCLI_FT_SSC_URL)
           SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
           SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)
+          SSC_APPVERSION: $(FORTIFY_RELEASE)

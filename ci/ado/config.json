@@ -2,11 +2,13 @@
   "repoUrl": "https://dev.azure.com/fortify-oss/fcli-ci-test",
   "supportedOs": ["linux", "windows", "mac"],
   "versions": ["v1"],
-  "secretNames": [
+  "variableNames": [
     "FCLI_FT_FOD_URL",
+    "FCLI_FT_SSC_URL"
+  ],
+  "secretNames": [
     "FCLI_FT_FOD_CLIENT_ID",
     "FCLI_FT_FOD_CLIENT_SECRET",
-    "FCLI_FT_SSC_URL",
     "FCLI_FT_SSC_TOKEN",
     "FCLI_FT_SC_SAST_TOKEN"
   ]

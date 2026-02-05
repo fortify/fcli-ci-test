@@ -21,6 +21,9 @@ on:
       os:
         description: 'Operating system (linux, windows, mac)'
         required: true
+      fortify_release:
+        description: 'Fortify release/appversion name'
+        required: true
 
 jobs:
   # Setup component test (product-agnostic)
@@ -55,9 +58,10 @@ jobs:
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
           SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
-          FOD_URL: ${{ secrets.FCLI_FT_FOD_URL }}
+          FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FOD_RELEASE: ${{ inputs.fortify_release }}
   
   # SSC ast-scan component test
   test-ssc-ast-scan:
@@ -73,6 +77,7 @@ jobs:
         env:
           FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
           SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
-          SSC_URL: ${{ secrets.FCLI_FT_SSC_URL }}
+          SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+          SSC_APPVERSION: ${{ inputs.fortify_release }}
