@@ -250,6 +250,126 @@ jobs:
           echo "GitLab Project: $GITLAB_PROJECT_ID"
           
           # Clone GitLab repo to temp directory
+          temp_dir=$(mktemp -d)
+          git clone "https://oauth2:$GITLAB_TOKEN@${GITLAB_REPO_URL#https://}" "$temp_dir"
+          cd "$temp_dir"
+          
+          # Check for changes
+          echo "Checking for pipeline or source changes..."
+          git fetch origin main
+          
+          # Copy pipeline file
+          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
+          
+          # Copy sources
+          rm -rf sources
+          cp -r "$GITHUB_WORKSPACE/sources" .
+          
+          # Check if anything changed
+          if git diff --quiet; then
+            echo "No changes detected, skipping git push"
+          else
+            echo "Changes detected, pushing to GitLab..."
+            git config user.name "fcli-ci-test"
+            git config user.email "fcli-ci-test@fortify.github.io"
+            git add .
+            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git push --force origin HEAD:main
+          fi
+          
+          cd "$GITHUB_WORKSPACE"
+          rm -rf "$temp_dir"
+          
+          echo "Syncing secrets to GitLab CI/CD variables..."
+          # Sync secrets via GitLab API
+          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
+            secret_value="${!secret_name}"
+            if [ -n "$secret_value" ]; then
+              echo "Updating variable: $secret_name"
+              # Delete existing variable (ignore errors)
+              curl -f -X DELETE \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+              
+              # Create variable
+              curl -f -X POST \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                -F "key=$secret_name" \
+                -F "value=$secret_value" \
+                -F "masked=true" \
+                -F "protected=false"
+            fi
+          done
+          
+          echo "Triggering GitLab pipeline..."
+          pipeline_response=$(curl -f -X POST \
+            "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
+            -F "token=$GITLAB_TRIGGER_TOKEN" \
+            -F "ref=main" \
+            -F "variables[VERSION]=${{ matrix.version }}" \
+            -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
+            -F "variables[PRODUCT]=${{ matrix.product }}" \
+            -F "variables[COMPONENT]=${{ matrix.component }}" \
+            -F "variables[SOURCE_DIR]=\$CI_PROJECT_DIR/sources/${{ matrix.source_dir }}" \
+            -F "variables[OS]=${{ matrix.os }}" \
+            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
+          
+          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+          echo "Pipeline ID: $pipeline_id"
+          
+          echo "Polling for completion (timeout: 30 minutes)..."
+          timeout=1800
+          elapsed=0
+          interval=30
+          
+          while [ $elapsed -lt $timeout ]; do
+            pipeline_status=$(curl -f -s \
+              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
+              -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
+            
+            echo "[$elapsed s] Status: $pipeline_status"
+            
+            case "$pipeline_status" in
+              success)
+                echo "✓ Test passed!"
+                exit 0
+                ;;
+              failed|canceled|skipped)
+                echo "✗ Test failed with status: $pipeline_status"
+                curl -f -s \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}'
+                exit 1
+                ;;
+              running|pending|created|waiting_for_resource|preparing)
+                # Continue polling
+                ;;
+              *)
+                echo "Unknown status: $pipeline_status"
+                exit 1
+                ;;
+            esac
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          echo "✗ Test timed out after $timeout seconds"
+          exit 1
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
+          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+      
+      - name: Sync and trigger ADO test
+        if: matrix.platform == 'ado'
+        run: |
           set -e
           
           # Read ADO config
@@ -431,128 +551,7 @@ jobs:
           FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
           FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKENe changes..."
-          git fetch origin main
-          
-          # Copy pipeline file
-          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
-          
-          # Copy sources
-          rm -rf sources
-          cp -r "$GITHUB_WORKSPACE/sources" .
-          
-          # Check if anything changed
-          if git diff --quiet; then
-            echo "No changes detected, skipping git push"
-          else
-            echo "Changes detected, pushing to GitLab..."
-            git config user.name "fcli-ci-test"
-            git config user.email "fcli-ci-test@fortify.github.io"
-            git add .
-            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
-            git push --force origin HEAD:main
-          fi
-          
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$temp_dir"
-          
-          echo "Syncing secrets to GitLab CI/CD variables..."
-          # Sync secrets via GitLab API
-          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
-            secret_value="${!secret_name}"
-            if [ -n "$secret_value" ]; then
-              echo "Updating variable: $secret_name"
-              # Delete existing variable (ignore errors)
-              curl -f -X DELETE \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
-              
-              # Create variable
-              curl -f -X POST \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-                -F "key=$secret_name" \
-                -F "value=$secret_value" \
-                -F "masked=true" \
-                -F "protected=false"
-            fi
-          done
-          
-          echo "Triggering GitLab pipeline..."
-          pipeline_response=$(curl -f -X POST \
-            "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
-            -F "token=$GITLAB_TRIGGER_TOKEN" \
-            -F "ref=main" \
-            -F "variables[VERSION]=${{ matrix.version }}" \
-            -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
-            -F "variables[PRODUCT]=${{ matrix.product }}" \
-            -F "variables[COMPONENT]=${{ matrix.component }}" \
-            -F "variables[SOURCE_DIR]=\$CI_PROJECT_DIR/sources/${{ matrix.source_dir }}" \
-            -F "variables[OS]=${{ matrix.os }}" \
-            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
-            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
-          
-          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
-          echo "Pipeline ID: $pipeline_id"
-          
-          echo "Polling for completion (timeout: 30 minutes)..."
-          timeout=1800
-          elapsed=0
-          interval=30
-          
-          while [ $elapsed -lt $timeout ]; do
-            pipeline_status=$(curl -f -s \
-              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
-              -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
-            
-            echo "[$elapsed s] Status: $pipeline_status"
-            
-            case "$pipeline_status" in
-              success)
-                echo "✓ Test passed!"
-                exit 0
-                ;;
-              failed|canceled|skipped)
-                echo "✗ Test failed with status: $pipeline_status"
-                curl -f -s \
-                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
-                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}'
-                exit 1
-                ;;
-              running|pending|created|waiting_for_resource|preparing)
-                # Continue polling
-                ;;
-              *)
-                echo "Unknown status: $pipeline_status"
-                exit 1
-                ;;
-            esac
-            
-            sleep $interval
-            elapsed=$((elapsed + interval))
-          done
-          
-          echo "✗ Test timed out after $timeout seconds"
-          exit 1
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
-          FCLI_FT_FOD_URL: ${{ secrets.FCLI_FT_FOD_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_URL: ${{ secrets.FCLI_FT_SSC_URL }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
-      
-      - name: Sync and trigger ADO test
-        if: matrix.platform == 'ado'
-        run: |
-          # TODO: Implement ADO sync and trigger
-          echo "ADO testing not yet implemented"
-        env:
-          ADO_PAT: ${{ secrets.ADO_PAT }}
-          ADO_ORGANIZATION: ${{ secrets.ADO_ORGANIZATION }}
-          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
 
   summary:
     name: Test Summary
