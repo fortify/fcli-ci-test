@@ -8,7 +8,7 @@ This repository orchestrates automated testing of fcli and its CI integrations (
 
 - `.github/workflows/` - GitHub Actions workflows
   - `run-tests.yml` - Main orchestrator for all CI platforms
-  - `test-pipeline.yml` - Symlink to ci/github/test-pipeline.yml
+  - `test-pipeline.yml` - Copy of ci/github/test-pipeline.yml (GitHub Actions doesn't support symlinks)
 - `ci/` - CI platform-specific configurations and pipelines
   - `github/` - GitHub Actions configuration and test pipeline
   - `gitlab/` - GitLab CI configuration and pipeline
@@ -108,11 +108,11 @@ Required GitHub repository secrets (using `FCLI_FT_*` prefix for functional test
 ### Modifying CI Pipelines
 
 Edit the pipeline files in the respective `ci/<platform>/` directories:
-- GitHub: Modify `ci/github/test-pipeline.yml` (symlinked to `.github/workflows/test-pipeline.yml`)
+- GitHub: Modify `.github/workflows/test-pipeline.yml`
 - GitLab: Modify `ci/gitlab/.gitlab-ci.yml`
 - Azure DevOps: Modify `ci/ado/azure-pipelines.yml`
 
-All pipelines are now consistently stored in their respective `ci/<platform>/` directories. For GitHub Actions, a symlink ensures the workflow remains discoverable by GitHub.
+GitLab and Azure DevOps pipelines are stored in their respective `ci/<platform>/` directories. GitHub Actions workflows must remain in `.github/workflows/` as required by GitHub.
 
 Changes will be automatically synchronized to remote repositories (GitLab, ADO) during the next test run.
 

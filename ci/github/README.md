@@ -12,9 +12,7 @@ See [config.json](config.json) for:
 
 ## Test Pipeline
 
-The test pipeline is located at [test-pipeline.yml](test-pipeline.yml) in this directory, with a symlink at [.github/workflows/test-pipeline.yml](../../.github/workflows/test-pipeline.yml) for GitHub Actions discoverability.
-
-This pattern maintains consistency with GitLab and Azure DevOps where all pipelines are stored in their respective `ci/<platform>/` directories.
+The test pipeline is located at [.github/workflows/test-pipeline.yml](../../.github/workflows/test-pipeline.yml).
 
 This pipeline is triggered by the main orchestrator workflow and executes tests using different versions of the `fortify/github-action`.
 

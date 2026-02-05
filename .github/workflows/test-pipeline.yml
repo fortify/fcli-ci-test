@@ -1,1 +1,83 @@
-../../ci/github/test-pipeline.yml
+name: Test Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Integration version (v2, v3)'
+        required: true
+      fcli_url:
+        description: 'Fcli artifact URL'
+        required: true
+      product:
+        description: 'Product (fod or ssc)'
+        required: true
+      component:
+        description: 'Component (setup or ast-scan)'
+        required: true
+      source_dir:
+        description: 'Source directory name'
+        required: true
+      os:
+        description: 'Operating system (linux, windows, mac)'
+        required: true
+      fortify_release:
+        description: 'Fortify release/appversion name'
+        required: true
+
+jobs:
+  # Setup component test (product-agnostic)
+  test-setup:
+    name: ${{ inputs.version }} / setup / ${{ inputs.os }}
+    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    if: inputs.component == 'setup'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Run fortify/github-action/setup
+        uses: fortify/github-action/setup@${{ inputs.version }}
+        env:
+          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+      
+      - name: Verify fcli installation
+        run: fcli --version
+        shell: bash
+  
+  # FoD ast-scan component test  
+  test-fod-ast-scan:
+    name: ${{ inputs.version }} / FoD / ast-scan / ${{ inputs.os }}
+    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    if: inputs.product == 'fod' && inputs.component == 'ast-scan'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Run fortify/github-action
+        uses: fortify/github-action@${{ inputs.version }}
+        env:
+          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+          SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
+          FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FOD_RELEASE: ${{ inputs.fortify_release }}
+  
+  # SSC ast-scan component test
+  test-ssc-ast-scan:
+    name: ${{ inputs.version }} / SSC / ast-scan / ${{ inputs.os }}
+    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    if: inputs.product == 'ssc' && inputs.component == 'ast-scan'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Run fortify/github-action
+        uses: fortify/github-action@${{ inputs.version }}
+        env:
+          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+          SOURCE_DIR: ${{ github.workspace }}/sources/${{ inputs.source_dir }}
+          SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+          SSC_APPVERSION: ${{ inputs.fortify_release }}
