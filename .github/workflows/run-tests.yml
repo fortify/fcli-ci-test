@@ -118,9 +118,247 @@ jobs:
           echo "### Test Combinations" >> $GITHUB_STEP_SUMMARY
           echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
 
+  # Sync GitLab repository and secrets once before running any GitLab tests
+  sync-gitlab:
+    name: Sync GitLab Repository
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    if: contains(needs.prepare-matrix.outputs.matrix, 'gitlab')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Sync GitLab repository and secrets
+        run: |
+          set -e
+          
+          # Read GitLab config
+          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
+          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          
+          echo "GitLab Project: $GITLAB_PROJECT_ID"
+          
+          # Clone GitLab repo to temp directory
+          temp_dir=$(mktemp -d)
+          git clone "https://oauth2:$GITLAB_TOKEN@${GITLAB_REPO_URL#https://}" "$temp_dir"
+          cd "$temp_dir"
+          
+          # Check for changes
+          echo "Checking for pipeline or source changes..."
+          # Check if main branch exists
+          if git ls-remote --heads origin main | grep -q main; then
+            git fetch origin main
+          else
+            echo "Repository is empty or main branch doesn't exist yet"
+            git checkout -b main
+          fi
+          
+          # Copy pipeline file
+          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
+          
+          # Copy README
+          cp "$GITHUB_WORKSPACE/ci/gitlab/README.md" README.md
+          
+          # Copy sources
+          rm -rf sources
+          cp -r "$GITHUB_WORKSPACE/sources" .
+          
+          # Check if anything changed (new files or modified files)
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Changes detected, pushing to GitLab..."
+            git config user.name "fcli-ci-test"
+            git config user.email "fcli-ci-test@fortify.github.io"
+            git add .
+            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git push --force origin HEAD:main
+          else
+            echo "No changes detected, skipping git push"
+          fi
+          
+          cd "$GITHUB_WORKSPACE"
+          rm -rf "$temp_dir"
+          
+          echo "Syncing secrets to GitLab CI/CD variables..."
+          # Sync secrets via GitLab API
+          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
+            secret_value="${!secret_name}"
+            if [ -n "$secret_value" ]; then
+              echo "Updating variable: $secret_name"
+              # Delete existing variable (ignore errors)
+              curl -s -X DELETE \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+              
+              # Create variable using JSON format
+              curl -f -X POST \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"key\": \"$secret_name\",
+                  \"value\": \"$secret_value\",
+                  \"masked\": true,
+                  \"protected\": false
+                }"
+            fi
+          done
+          
+          echo "✓ GitLab repository and secrets synced successfully"
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+
+  # Sync ADO repository and secrets once before running any ADO tests
+  sync-ado:
+    name: Sync Azure DevOps Repository
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    if: contains(needs.prepare-matrix.outputs.matrix, 'ado')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Sync ADO repository and secrets
+        run: |
+          set -e
+          
+          # Read ADO config
+          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
+          ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
+          ADO_PROJ="${{ secrets.ADO_PROJECT }}"
+          
+          echo "Azure DevOps: $ADO_ORG/$ADO_PROJ"
+          
+          # Clone ADO repo to temp directory
+          temp_dir=$(mktemp -d)
+          git clone "https://$ADO_PAT@${ADO_REPO_URL#https://}" "$temp_dir"
+          cd "$temp_dir"
+          
+          # Check for changes
+          echo "Checking for pipeline or source changes..."
+          # Check if main branch exists
+          if git ls-remote --heads origin main | grep -q main; then
+            git fetch origin main
+          else
+            echo "Repository is empty or main branch doesn't exist yet"
+            git checkout -b main
+          fi
+          
+          # Copy pipeline file
+          cp "$GITHUB_WORKSPACE/ci/ado/azure-pipelines.yml" azure-pipelines.yml
+          
+          # Copy README
+          cp "$GITHUB_WORKSPACE/ci/ado/README.md" README.md
+          
+          # Copy sources
+          rm -rf sources
+          cp -r "$GITHUB_WORKSPACE/sources" .
+          
+          # Check if anything changed (new files or modified files)
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Changes detected, pushing to Azure DevOps..."
+            git config user.name "fcli-ci-test"
+            git config user.email "fcli-ci-test@fortify.github.io"
+            git add .
+            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git push --force origin HEAD:main
+          else
+            echo "No changes detected, skipping git push"
+          fi
+          
+          cd "$GITHUB_WORKSPACE"
+          rm -rf "$temp_dir"
+          
+          echo "Syncing secrets to Azure DevOps Variable Group..."
+          # Get or create variable group
+          vg_response=$(curl -f -s \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+            -H "Content-Type: application/json")
+          
+          # Find fcli-ci-test variable group
+          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
+          
+          if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
+            echo "Creating variable group..."
+            vg_create=$(curl -f -s -X POST \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+              -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "fcli-ci-test",
+                "description": "fcli CI test variables",
+                "type": "Vsts",
+                "variables": {}
+              }')
+            vg_id=$(echo "$vg_create" | jq -r '.id')
+          fi
+          
+          echo "Variable Group ID: $vg_id"
+          
+          # Build variables JSON
+          variables_json='{"variables":{'
+          first=true
+          
+          # Add regular variables (URLs)
+          for var_name in $(jq -r '.variableNames[]' ci/ado/config.json); do
+            var_value="${!var_name}"
+            if [ -n "$var_value" ]; then
+              if [ "$first" = false ]; then
+                variables_json="$variables_json,"
+              fi
+              variables_json="$variables_json\"$var_name\":{\"value\":\"$var_value\",\"isSecret\":false}"
+              first=false
+            fi
+          done
+          
+          # Add secrets
+          for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
+            secret_value="${!secret_name}"
+            if [ -n "$secret_value" ]; then
+              if [ "$first" = false ]; then
+                variables_json="$variables_json,"
+              fi
+              variables_json="$variables_json\"$secret_name\":{\"value\":\"$secret_value\",\"isSecret\":true}"
+              first=false
+            fi
+          done
+          variables_json="$variables_json}}"
+          
+          # Update variable group
+          echo "Updating variable group with secrets..."
+          curl -f -X PUT \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
+            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"id\": $vg_id,
+              \"name\": \"fcli-ci-test\",
+              \"type\": \"Vsts\",
+              $variables_json
+            }" > /dev/null
+          
+          echo "✓ Azure DevOps repository and secrets synced successfully"
+        env:
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+
   test:
     name: Test ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
-    needs: prepare-matrix
+    needs: [prepare-matrix, sync-gitlab, sync-ado]
+    if: |
+      always() &&
+      needs.prepare-matrix.outputs.matrix != '[]' &&
+      (needs.sync-gitlab.result == 'success' || needs.sync-gitlab.result == 'skipped') &&
+      (needs.sync-ado.result == 'success' || needs.sync-ado.result == 'skipped')
     runs-on: ubuntu-latest
     if: needs.prepare-matrix.outputs.matrix != '[]'
     strategy:
@@ -240,7 +478,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Sync and trigger GitLab test
+      - name: Trigger GitLab test
         if: matrix.platform == 'gitlab'
         run: |
           set -e
@@ -248,70 +486,6 @@ jobs:
           # Read GitLab config
           GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
           GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
-          
-          echo "GitLab Project: $GITLAB_PROJECT_ID"
-          
-          # Clone GitLab repo to temp directory
-          temp_dir=$(mktemp -d)
-          git clone "https://oauth2:$GITLAB_TOKEN@${GITLAB_REPO_URL#https://}" "$temp_dir"
-          cd "$temp_dir"
-          
-          # Check for changes
-          echo "Checking for pipeline or source changes..."
-          # Check if main branch exists
-          if git ls-remote --heads origin main | grep -q main; then
-            git fetch origin main
-          else
-            echo "Repository is empty or main branch doesn't exist yet"
-            git checkout -b main
-          fi
-          
-          # Copy pipeline file
-          cp "$GITHUB_WORKSPACE/ci/gitlab/.gitlab-ci.yml" .gitlab-ci.yml
-          
-          # Copy README
-          cp "$GITHUB_WORKSPACE/ci/gitlab/README.md" README.md
-          
-          # Copy sources
-          rm -rf sources
-          cp -r "$GITHUB_WORKSPACE/sources" .
-          
-          # Check if anything changed
-          if git diff --quiet && git ls-files --others --exclude-standard | grep -q .; then
-            echo "No changes detected, skipping git push"
-          else
-            echo "Changes detected, pushing to GitLab..."
-            git config user.name "fcli-ci-test"
-            git config user.email "fcli-ci-test@fortify.github.io"
-            git add .
-            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
-            git push --force origin HEAD:main
-          fi
-          
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$temp_dir"
-          
-          echo "Syncing secrets to GitLab CI/CD variables..."
-          # Sync secrets via GitLab API
-          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
-            secret_value="${!secret_name}"
-            if [ -n "$secret_value" ]; then
-              echo "Updating variable: $secret_name"
-              # Delete existing variable (ignore errors)
-              curl -f -X DELETE \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
-              
-              # Create variable
-              curl -f -X POST \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-                -F "key=$secret_name" \
-                -F "value=$secret_value" \
-                -F "masked=true" \
-                -F "protected=false"
-            fi
-          done
           
           echo "Triggering GitLab pipeline..."
           pipeline_response=$(curl -f -X POST \
@@ -371,124 +545,14 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
-          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
       
-      - name: Sync and trigger ADO test
+      - name: Trigger ADO test
         if: matrix.platform == 'ado'
         run: |
           set -e
           
-          # Read ADO config
-          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
           ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
           ADO_PROJ="${{ secrets.ADO_PROJECT }}"
-          
-          echo "Azure DevOps: $ADO_ORG/$ADO_PROJ"
-          
-          # Clone ADO repo to temp directory
-          temp_dir=$(mktemp -d)
-          git clone "https://${{ secrets.ADO_PAT }}@${ADO_REPO_URL#https://}" "$temp_dir"
-          cd "$temp_dir"
-          
-          # Check for changes
-          echo "Checking for pipeline or source changes..."
-          git fetch origin main
-          
-          # Copy pipeline file
-          cp "$GITHUB_WORKSPACE/ci/ado/azure-pipelines.yml" azure-pipelines.yml
-          
-          # Copy sources
-          rm -rf sources
-          cp -r "$GITHUB_WORKSPACE/sources" .
-          
-          # Check if anything changed
-          if git diff --quiet; then
-            echo "No changes detected, skipping git push"
-          else
-            echo "Changes detected, pushing to Azure DevOps..."
-            git config user.name "fcli-ci-test"
-            git config user.email "fcli-ci-test@fortify.github.io"
-            git add .
-            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
-            git push --force origin HEAD:main
-          fi
-          
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$temp_dir"
-          
-          echo "Syncing secrets to Azure DevOps Variable Group..."
-          # Get or create variable group
-          vg_response=$(curl -f -s \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
-            -H "Content-Type: application/json")
-          
-          # Find fcli-ci-test variable group
-          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
-          
-          if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
-            echo "Creating variable group..."
-            vg_create=$(curl -f -s -X POST \
-              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-              -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "name": "fcli-ci-test",
-                "description": "fcli CI test variables",
-                "type": "Vsts",
-                "variables": {}
-              }')
-            vg_id=$(echo "$vg_create" | jq -r '.id')
-          fi
-          
-          echo "Variable Group ID: $vg_id"
-          
-          # Build variables JSON
-          variables_json='{"variables":{'
-          first=true
-          
-          # Add regular variables (URLs)
-          for var_name in $(jq -r '.variableNames[]' ci/ado/config.json); do
-            var_value="${!var_name}"
-            if [ -n "$var_value" ]; then
-              if [ "$first" = false ]; then
-                variables_json="$variables_json,"
-              fi
-              variables_json="$variables_json\"$var_name\":{\"value\":\"$var_value\",\"isSecret\":false}"
-              first=false
-            fi
-          done
-          
-          # Add secrets
-          for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
-            secret_value="${!secret_name}"
-            if [ -n "$secret_value" ]; then
-              if [ "$first" = false ]; then
-                variables_json="$variables_json,"
-              fi
-              variables_json="$variables_json\"$secret_name\":{\"value\":\"$secret_value\",\"isSecret\":true}"
-              first=false
-            fi
-          done
-          variables_json="$variables_json}}"
-          
-          # Update variable group
-          echo "Updating variable group with secrets..."
-          curl -f -X PUT \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
-            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"id\": $vg_id,
-              \"name\": \"fcli-ci-test\",
-              \"type\": \"Vsts\",
-              $variables_json
-            }" > /dev/null
           
           echo "Triggering Azure DevOps pipeline..."
           build_response=$(curl -f -s -X POST \
@@ -555,14 +619,6 @@ jobs:
           exit 1
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
-          ADO_ORGANIZATION: ${{ secrets.ADO_ORGANIZATION }}
-          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
-          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
 
   summary:
     name: Test Summary
