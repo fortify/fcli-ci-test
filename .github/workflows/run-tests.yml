@@ -320,10 +320,12 @@ jobs:
         run: |
           set -e
           
-          ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
-          ADO_PROJ="${{ secrets.ADO_PROJECT }}"
+          # Parse ADO org and project from config
+          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
+          ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
+          ADO_PROJ=$(echo "$ADO_REPO_URL" | cut -d'/' -f2)
           
-          echo "Syncing secrets to Azure DevOps Variable Group..."
+          echo "Syncing secrets to Azure DevOps Variable Group ($ADO_ORG/$ADO_PROJ)..."
           # Get or create variable group
           vg_response=$(curl -f -s \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
@@ -628,10 +630,12 @@ jobs:
         run: |
           set -e
           
-          ADO_ORG="${{ secrets.ADO_ORGANIZATION }}"
-          ADO_PROJ="${{ secrets.ADO_PROJECT }}"
+          # Parse ADO org and project from config
+          ADO_REPO_URL=$(jq -r '.repoUrl' ci/${{ matrix.platform }}/config.json)
+          ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
+          ADO_PROJ=$(echo "$ADO_REPO_URL" | cut -d'/' -f2)
           
-          echo "Triggering Azure DevOps pipeline..."
+          echo "Triggering Azure DevOps pipeline ($ADO_ORG/$ADO_PROJ)..."
           
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
