@@ -2,16 +2,15 @@
 include:
   - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@1
     inputs:
-      stage: test
-      job-name: test-v2-fod-ast-scan
+      debug: true
       image: ${GITLAB_IMAGE}
-    rules:
-      - if: $VERSION == "v2" && $PRODUCT == "fod" && $COMPONENT == "ast-scan"
 
-variables:
-  FCLI_URL: ${FCLI_URL}
-  SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
-  FOD_URL: ${FCLI_FT_FOD_URL}
-  FOD_CLIENT_ID: ${FCLI_FT_FOD_CLIENT_ID}
-  FOD_CLIENT_SECRET: ${FCLI_FT_FOD_CLIENT_SECRET}
-  FOD_RELEASE: ${FORTIFY_RELEASE}
+fortify-ast-scan:
+  image: ${GITLAB_IMAGE}
+  variables:
+    FCLI_URL: ${FCLI_URL}
+    SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
+    FOD_URL: ${FCLI_FT_FOD_URL}
+    FOD_CLIENT_ID: ${FCLI_FT_FOD_CLIENT_ID}
+    FOD_CLIENT_SECRET: ${FCLI_FT_FOD_CLIENT_SECRET}
+    FOD_RELEASE: ${FORTIFY_RELEASE}

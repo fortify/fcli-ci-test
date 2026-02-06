@@ -2,18 +2,16 @@
 include:
   - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@1
     inputs:
-      stage: test
-      job-name: test-v2-ssc-ast-scan
-      image: ${GITLAB_IMAGE}
-    rules:
-      - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
+      debug: true
 
-variables:
-  FCLI_URL: ${FCLI_URL}
-  SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
-  SSC_URL: ${FCLI_FT_SSC_URL}
-  SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}
-  SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
-  SSC_APPVERSION: ${FORTIFY_RELEASE}
-  SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
-  SAST_SCAN_EXTRA_OPTS: --no-replace
+fortify-ast-scan:
+  image: ${GITLAB_IMAGE}
+  variables:
+    FCLI_URL: ${FCLI_URL}
+    SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
+    SSC_URL: ${FCLI_FT_SSC_URL}
+    SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}
+    SC_SAST_TOKEN: ${FCLI_FT_SC_SAST_TOKEN}
+    SSC_APPVERSION: ${FORTIFY_RELEASE}
+    SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+    SAST_SCAN_EXTRA_OPTS: --no-replace
