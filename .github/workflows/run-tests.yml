@@ -329,11 +329,21 @@ jobs:
           echo "Org: '$ADO_ORG'"
           echo "Project: '$ADO_PROJ'"
           
+          # Check if PAT is set
+          if [ -z "$ADO_PAT" ]; then
+            echo "Error: ADO_PAT is not set"
+            exit 1
+          fi
+          echo "PAT length: ${#ADO_PAT}"
+          
+          # Create auth header properly
+          AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
+          
           # Test basic connectivity first
           echo "Testing API connectivity..."
           test_response=$(curl -s -o /dev/null -w "%{http_code}" \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)")
+            -H "$AUTH_HEADER")
           
           echo "Test HTTP response code: $test_response"
           
@@ -356,7 +366,7 @@ jobs:
           echo "Fetching existing variable groups..."
           vg_response=$(curl -s \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+            -H "$AUTH_HEADER" \
             -H "Content-Type: application/json")
           
           echo "Response body (first 500 chars): ${vg_response:0:500}"
@@ -368,7 +378,7 @@ jobs:
             echo "Creating variable group..."
             vg_create=$(curl -s -X POST \
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-              -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+              -H "$AUTH_HEADER" \
               -H "Content-Type: application/json" \
               -d '{
                 "name": "fcli-ci-test",
@@ -416,7 +426,7 @@ jobs:
           echo "Updating variable group ID $vg_id with secrets..."
           update_response=$(curl -s -X PUT \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
-            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
+            -H "$AUTH_HEADER" \
             -H "Content-Type: application/json" \
             -d "{
               \"id\": $vg_id,
@@ -678,12 +688,15 @@ jobs:
           
           echo "Triggering Azure DevOps pipeline ($ADO_ORG/$ADO_PROJ)..."
           
+          # Create auth header
+          AUTH_HEADER="Authorization: Basic $(printf ":%s" "${{ secrets.ADO_PAT }}" | base64 -w 0)"
+          
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
           
-          build_response=$(curl -f -s -X POST \
+          build_response=$(curl -s -X POST \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/1/runs?api-version=7.1-preview.1" \
-            -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
+            -H "$AUTH_HEADER" \
             -H "Content-Type: application/json" \
             -d "{
               \"resources\": {
@@ -718,9 +731,9 @@ jobs:
           interval=30
           
           while [ $elapsed -lt $timeout ]; do
-            build_info=$(curl -f -s \
+            build_info=$(curl -s \
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
-              -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)")
+              -H "$AUTH_HEADER")
             
             build_status=$(echo "$build_info" | jq -r '.status')
             build_result=$(echo "$build_info" | jq -r '.result')
@@ -734,9 +747,9 @@ jobs:
               else
                 echo "✗ Test failed with result: $build_result"
                 # Get failed job logs
-                curl -f -s \
+                curl -s \
                   "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
-                  -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" | \
+                  -H "$AUTH_HEADER" | \
                   jq '.records[] | select(.result == "failed") | {name, type, result}'
                 exit 1
               fi
