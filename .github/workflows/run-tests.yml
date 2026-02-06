@@ -326,50 +326,47 @@ jobs:
           ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
           
           echo "Syncing secrets to Azure DevOps Variable Group ($ADO_ORG/$ADO_PROJ)..."
-          echo "API endpoint: https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2"
+          echo "Org: '$ADO_ORG'"
+          echo "Project: '$ADO_PROJ'"
+          
+          # Test basic connectivity first
+          echo "Testing API connectivity..."
+          test_response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+            -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)")
+          
+          echo "Test HTTP response code: $test_response"
+          
+          if [ "$test_response" = "000" ]; then
+            echo "Error: Unable to connect to Azure DevOps API"
+            exit 1
+          fi
+          
+          if [ "$test_response" = "401" ]; then
+            echo "Error: Authentication failed - check ADO_PAT secret"
+            exit 1
+          fi
+          
+          if [ "$test_response" = "404" ]; then
+            echo "Error: Project not found - check organization and project names"
+            exit 1
+          fi
           
           # Get or create variable group
           echo "Fetching existing variable groups..."
-          vg_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+          vg_response=$(curl -s \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
             -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
-            -H "Content-Type: application/json" 2>&1)
+            -H "Content-Type: application/json")
           
-          curl_exit_code=$?
-          echo "Curl exit code: $curl_exit_code"
-          
-          if [ $curl_exit_code -ne 0 ]; then
-            echo "Error: Curl command failed with exit code $curl_exit_code"
-            echo "Response: $vg_response"
-            exit 1
-          fi
-          
-          echo "Raw response length: ${#vg_response}"
-          echo "First 500 chars of response: ${vg_response:0:500}"
-          
-          http_code=$(echo "$vg_response" | grep "HTTP_CODE:" | cut -d':' -f2)
-          vg_body=$(echo "$vg_response" | sed '/HTTP_CODE:/d')
-          
-          echo "Extracted HTTP code: '$http_code'"
-          
-          if [ -z "$http_code" ]; then
-            echo "Error: Could not extract HTTP code from response"
-            echo "Full response: $vg_response"
-            exit 1
-          fi
-          
-          if [ "$http_code" != "200" ]; then
-            echo "Error: Failed to fetch variable groups (HTTP $http_code)"
-            echo "Response: $vg_body"
-            exit 1
-          fi
+          echo "Response body (first 500 chars): ${vg_response:0:500}"
           
           # Find fcli-ci-test variable group
-          vg_id=$(echo "$vg_body" | jq -r '.value[]? | select(.name == "fcli-ci-test") | .id')
+          vg_id=$(echo "$vg_response" | jq -r '.value[]? | select(.name == "fcli-ci-test") | .id')
           
           if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
             echo "Creating variable group..."
-            vg_create_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+            vg_create=$(curl -s -X POST \
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
               -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
               -H "Content-Type: application/json" \
@@ -380,16 +377,8 @@ jobs:
                 "variables": {}
               }')
             
-            create_http_code=$(echo "$vg_create_response" | grep "HTTP_CODE:" | cut -d':' -f2)
-            create_body=$(echo "$vg_create_response" | sed '/HTTP_CODE:/d')
-            
-            if [ "$create_http_code" != "200" ]; then
-              echo "Error: Failed to create variable group (HTTP $create_http_code)"
-              echo "Response: $create_body"
-              exit 1
-            fi
-            
-            vg_id=$(echo "$create_body" | jq -r '.id')
+            echo "Create response: ${vg_create:0:200}"
+            vg_id=$(echo "$vg_create" | jq -r '.id')
           fi
           
           echo "Variable Group ID: $vg_id"
@@ -424,8 +413,8 @@ jobs:
           variables_json="$variables_json}}"
           
           # Update variable group
-          echo "Updating variable group with secrets..."
-          update_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X PUT \
+          echo "Updating variable group ID $vg_id with secrets..."
+          update_response=$(curl -s -X PUT \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
             -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
             -H "Content-Type: application/json" \
@@ -436,12 +425,13 @@ jobs:
               $variables_json
             }")
           
-          update_http_code=$(echo "$update_response" | grep "HTTP_CODE:" | cut -d':' -f2)
-          update_body=$(echo "$update_response" | sed '/HTTP_CODE:/d')
+          echo "Update response (first 200 chars): ${update_response:0:200}"
           
-          if [ "$update_http_code" != "200" ]; then
-            echo "Error: Failed to update variable group (HTTP $update_http_code)"
-            echo "Response: $update_body"
+          # Check if update was successful (check for id in response)
+          updated_id=$(echo "$update_response" | jq -r '.id // empty')
+          if [ -z "$updated_id" ]; then
+            echo "Error: Failed to update variable group"
+            echo "Full response: $update_response"
             exit 1
           fi
           
