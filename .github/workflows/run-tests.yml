@@ -678,7 +678,20 @@ jobs:
               }
             }")
           
+          # Check if response is valid JSON
+          if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
+            echo "Error: API returned invalid JSON response:"
+            echo "$build_response"
+            exit 1
+          fi
+          
           build_id=$(echo "$build_response" | jq -r '.id')
+          if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then
+            echo "Error: Failed to get build ID from response:"
+            echo "$build_response" | jq .
+            exit 1
+          fi
+          
           build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
           echo "Build ID: $build_id"
           echo "Build URL: $build_url"

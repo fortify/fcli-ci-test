@@ -1,27 +1,44 @@
-# Expected variables from trigger:
-# PIPELINE_NAME, VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, SETUP_TASKS (optional JSON array)
+# Pipeline parameters passed from external trigger
+parameters:
+  - name: PIPELINE_NAME
+    type: string
+    default: 'ci-test'
+  - name: VERSION
+    type: string
+  - name: FCLI_URL
+    type: string
+  - name: PRODUCT
+    type: string
+  - name: COMPONENT
+    type: string
+  - name: SOURCE_DIR
+    type: string
+  - name: OS
+    type: string
+  - name: FORTIFY_RELEASE
+    type: string
+    default: 'main'
+  - name: SETUP_TASKS
+    type: string
+    default: '[]'
 
-name: $(PIPELINE_NAME)
+name: ${{ parameters.PIPELINE_NAME }}
 
 trigger: none
 
 pool:
-  vmImage: $(VM_IMAGE)
-
-variables:
-  - name: VM_IMAGE
-    ${{ if eq(variables['OS'], 'linux') }}:
-      value: 'ubuntu-latest'
-    ${{ if eq(variables['OS'], 'windows') }}:
-      value: 'windows-latest'
-    ${{ if eq(variables['OS'], 'mac') }}:
-      value: 'macOS-latest'
+  ${{ if eq(parameters.OS, 'linux') }}:
+    vmImage: 'ubuntu-latest'
+  ${{ if eq(parameters.OS, 'windows') }}:
+    vmImage: 'windows-latest'
+  ${{ if eq(parameters.OS, 'mac') }}:
+    vmImage: 'macOS-latest'
 
 jobs:
   # Setup test (product-agnostic)
   - job: test_setup
     displayName: 'Setup Test'
-    condition: and(succeeded(), eq(variables['COMPONENT'], 'setup'))
+    condition: and(succeeded(), eq('${{ parameters.COMPONENT }}', 'setup'))
     steps:
       - checkout: self
       
@@ -30,67 +47,155 @@ jobs:
         inputs:
           targetType: 'inline'
           script: |
-            echo "Testing @fortify/setup $(VERSION) bootstrap"
+            echo "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             npx @fortify/setup@v2 env ado
             fcli --version
         env:
-          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
 
   # FoD ast-scan test
   - job: test_fod_ast_scan
     displayName: 'FoD AST Scan Test'
-    condition: and(succeeded(), eq(variables['PRODUCT'], 'fod'), eq(variables['COMPONENT'], 'ast-scan'))
+    condition: and(succeeded(), eq('${{ parameters.PRODUCT }}', 'fod'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
     steps:
       - checkout: self
       
-      - template: templates/setup-build-tools.yml
-        parameters:
-          setupTasks: ${{ variables.SETUP_TASKS }}
+      - task: Bash@3
+        displayName: 'Setup build tools'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # Parse SETUP_TASKS JSON and run appropriate setup commands
+            setup_tasks='${{ parameters.SETUP_TASKS }}'
+            if [ "$setup_tasks" != "[]" ] && [ -n "$setup_tasks" ]; then
+              echo "Setting up build tools based on source language..."
+              echo "$setup_tasks" | jq -c '.[]' | while read -r task; do
+                task_name=$(echo "$task" | jq -r '.task // empty')
+                echo "Processing task: $task_name"
+                
+                # Handle Java setup
+                if [[ "$task_name" == *"JavaToolInstaller"* ]]; then
+                  java_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Java $java_version is pre-installed on ubuntu-latest"
+                  java -version
+                fi
+                
+                # Handle Node.js setup
+                if [[ "$task_name" == *"NodeTool"* ]]; then
+                  node_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Setting up Node.js $node_version..."
+                  # Use nvm if available, otherwise node is pre-installed
+                  if command -v nvm &> /dev/null; then
+                    nvm install "$node_version"
+                    nvm use "$node_version"
+                  fi
+                  node --version
+                fi
+                
+                # Handle .NET setup
+                if [[ "$task_name" == *"UseDotNet"* ]]; then
+                  dotnet_version=$(echo "$task" | jq -r '.inputs.version')
+                  echo ".NET $dotnet_version setup"
+                  dotnet --version
+                fi
+                
+                # Handle Python setup
+                if [[ "$task_name" == *"UsePythonVersion"* ]]; then
+                  python_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Python $python_version is pre-installed"
+                  python --version
+                fi
+              done
+            fi
       
       - task: Bash@3
         displayName: 'Test FoD ast-scan'
         inputs:
           targetType: 'inline'
           script: |
-            echo "Testing @fortify/setup $(VERSION) with fcli action run ci for FoD"
+            echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for FoD"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             npx @fortify/setup@v2 env ado
             fcli action run ci
         env:
-          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
           FOD_URL: $(FCLI_FT_FOD_URL)
           FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
-          FOD_RELEASE: $(FORTIFY_RELEASE)
-          SOURCE_DIR: $(Build.SourcesDirectory)/$(SOURCE_DIR)
+          FOD_RELEASE: ${{ parameters.FORTIFY_RELEASE }}
+          SOURCE_DIR: $(Build.SourcesDirectory)/${{ parameters.SOURCE_DIR }}
 
   # SSC ast-scan test
   - job: test_ssc_ast_scan
     displayName: 'SSC AST Scan Test'
-    condition: and(succeeded(), eq(variables['PRODUCT'], 'ssc'), eq(variables['COMPONENT'], 'ast-scan'))
+    condition: and(succeeded(), eq('${{ parameters.PRODUCT }}', 'ssc'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
     steps:
       - checkout: self
       
-      - template: templates/setup-build-tools.yml
-        parameters:
-          setupTasks: ${{ variables.SETUP_TASKS }}
+      - task: Bash@3
+        displayName: 'Setup build tools'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # Parse SETUP_TASKS JSON and run appropriate setup commands
+            setup_tasks='${{ parameters.SETUP_TASKS }}'
+            if [ "$setup_tasks" != "[]" ] && [ -n "$setup_tasks" ]; then
+              echo "Setting up build tools based on source language..."
+              echo "$setup_tasks" | jq -c '.[]' | while read -r task; do
+                task_name=$(echo "$task" | jq -r '.task // empty')
+                echo "Processing task: $task_name"
+                
+                # Handle Java setup
+                if [[ "$task_name" == *"JavaToolInstaller"* ]]; then
+                  java_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Java $java_version is pre-installed on ubuntu-latest"
+                  java -version
+                fi
+                
+                # Handle Node.js setup
+                if [[ "$task_name" == *"NodeTool"* ]]; then
+                  node_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Setting up Node.js $node_version..."
+                  # Use nvm if available, otherwise node is pre-installed
+                  if command -v nvm &> /dev/null; then
+                    nvm install "$node_version"
+                    nvm use "$node_version"
+                  fi
+                  node --version
+                fi
+                
+                # Handle .NET setup
+                if [[ "$task_name" == *"UseDotNet"* ]]; then
+                  dotnet_version=$(echo "$task" | jq -r '.inputs.version')
+                  echo ".NET $dotnet_version setup"
+                  dotnet --version
+                fi
+                
+                # Handle Python setup
+                if [[ "$task_name" == *"UsePythonVersion"* ]]; then
+                  python_version=$(echo "$task" | jq -r '.inputs.versionSpec')
+                  echo "Python $python_version is pre-installed"
+                  python --version
+                fi
+              done
+            fi
       
       - task: Bash@3
         displayName: 'Test SSC ast-scan'
         inputs:
           targetType: 'inline'
           script: |
-            echo "Testing @fortify/setup $(VERSION) with fcli action run ci for SSC"
-            cd $(Build.SourcesDirectory)/sources/$(SOURCE_DIR)
+            echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for SSC"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             npx @fortify/setup@v2 env ado
             fcli action run ci
         env:
-          FCLI_BOOTSTRAP_URL: $(FCLI_URL)
+          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
           SSC_URL: $(FCLI_FT_SSC_URL)
           SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
           SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)
-          SSC_APPVERSION: $(FORTIFY_RELEASE)
+          SSC_APPVERSION: ${{ parameters.FORTIFY_RELEASE }}
+          SOURCE_DIR: $(Build.SourcesDirectory)/${{ parameters.SOURCE_DIR }}
           SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
           SAST_SCAN_EXTRA_OPTS: --no-replace
