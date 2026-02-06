@@ -380,15 +380,27 @@ jobs:
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
               -H "$AUTH_HEADER" \
               -H "Content-Type: application/json" \
-              -d '{
-                "name": "fcli-ci-test",
-                "description": "fcli CI test variables",
-                "type": "Vsts",
-                "variables": {}
-              }')
+              -d "{
+                \"name\": \"fcli-ci-test\",
+                \"description\": \"fcli CI test variables\",
+                \"type\": \"Vsts\",
+                \"variables\": {},
+                \"variableGroupProjectReferences\": [{
+                  \"name\": \"fcli-ci-test\",
+                  \"projectReference\": {
+                    \"name\": \"$ADO_PROJ\"
+                  }
+                }]
+              }")
             
             echo "Create response: ${vg_create:0:200}"
             vg_id=$(echo "$vg_create" | jq -r '.id')
+            
+            if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
+              echo "Error: Failed to create variable group"
+              echo "Full response: $vg_create"
+              exit 1
+            fi
           fi
           
           echo "Variable Group ID: $vg_id"
