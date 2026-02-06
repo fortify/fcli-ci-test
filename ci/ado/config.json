@@ -1,5 +1,5 @@
 {
-  "repoUrl": "https://dev.azure.com/fortify-pm/fcli-ci-test",
+  "repoUrl": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test",
   "supportedOs": ["linux", "windows", "mac"],
   "variableNames": [
     "FCLI_FT_FOD_URL",
