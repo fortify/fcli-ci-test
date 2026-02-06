@@ -326,18 +326,30 @@ jobs:
           ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
           
           echo "Syncing secrets to Azure DevOps Variable Group ($ADO_ORG/$ADO_PROJ)..."
+          echo "API endpoint: https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2"
+          
           # Get or create variable group
-          vg_response=$(curl -f -s \
+          echo "Fetching existing variable groups..."
+          vg_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
             -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
             -H "Content-Type: application/json")
           
+          http_code=$(echo "$vg_response" | grep "HTTP_CODE:" | cut -d':' -f2)
+          vg_body=$(echo "$vg_response" | sed '/HTTP_CODE:/d')
+          
+          if [ "$http_code" != "200" ]; then
+            echo "Error: Failed to fetch variable groups (HTTP $http_code)"
+            echo "Response: $vg_body"
+            exit 1
+          fi
+          
           # Find fcli-ci-test variable group
-          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
+          vg_id=$(echo "$vg_body" | jq -r '.value[]? | select(.name == "fcli-ci-test") | .id')
           
           if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
             echo "Creating variable group..."
-            vg_create=$(curl -f -s -X POST \
+            vg_create_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
               -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
               -H "Content-Type: application/json" \
@@ -347,7 +359,17 @@ jobs:
                 "type": "Vsts",
                 "variables": {}
               }')
-            vg_id=$(echo "$vg_create" | jq -r '.id')
+            
+            create_http_code=$(echo "$vg_create_response" | grep "HTTP_CODE:" | cut -d':' -f2)
+            create_body=$(echo "$vg_create_response" | sed '/HTTP_CODE:/d')
+            
+            if [ "$create_http_code" != "200" ]; then
+              echo "Error: Failed to create variable group (HTTP $create_http_code)"
+              echo "Response: $create_body"
+              exit 1
+            fi
+            
+            vg_id=$(echo "$create_body" | jq -r '.id')
           fi
           
           echo "Variable Group ID: $vg_id"
@@ -383,7 +405,7 @@ jobs:
           
           # Update variable group
           echo "Updating variable group with secrets..."
-          curl -f -X PUT \
+          update_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X PUT \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
             -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
             -H "Content-Type: application/json" \
@@ -392,7 +414,16 @@ jobs:
               \"name\": \"fcli-ci-test\",
               \"type\": \"Vsts\",
               $variables_json
-            }" > /dev/null
+            }")
+          
+          update_http_code=$(echo "$update_response" | grep "HTTP_CODE:" | cut -d':' -f2)
+          update_body=$(echo "$update_response" | sed '/HTTP_CODE:/d')
+          
+          if [ "$update_http_code" != "200" ]; then
+            echo "Error: Failed to update variable group (HTTP $update_http_code)"
+            echo "Response: $update_body"
+            exit 1
+          fi
           
           echo "✓ Azure DevOps secrets synced successfully"
         env:
