@@ -26,13 +26,17 @@ name: ${{ parameters.PIPELINE_NAME }}
 
 trigger: none
 
+variables:
+  - name: VM_IMAGE
+    ${{ if eq(parameters.OS, 'linux') }}:
+      value: 'ubuntu-latest'
+    ${{ if eq(parameters.OS, 'windows') }}:
+      value: 'windows-latest'
+    ${{ if eq(parameters.OS, 'mac') }}:
+      value: 'macOS-latest'
+
 pool:
-  ${{ if eq(parameters.OS, 'linux') }}:
-    vmImage: 'ubuntu-latest'
-  ${{ if eq(parameters.OS, 'windows') }}:
-    vmImage: 'windows-latest'
-  ${{ if eq(parameters.OS, 'mac') }}:
-    vmImage: 'macOS-latest'
+  vmImage: $(VM_IMAGE)
 
 jobs:
   # Setup test (product-agnostic)
