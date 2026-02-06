@@ -4,6 +4,7 @@ include:
     inputs:
       stage: test
       job-name: test-v2-ssc-ast-scan
+      image: ${GITLAB_IMAGE}
     rules:
       - if: $VERSION == "v2" && $PRODUCT == "ssc" && $COMPONENT == "ast-scan"
 

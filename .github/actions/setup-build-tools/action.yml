@@ -1,0 +1,57 @@
+name: 'Setup Build Tools'
+description: 'Conditionally sets up build tools required for building source code'
+inputs:
+  setup-steps:
+    description: 'JSON array of setup steps to execute (from sources/config.json)'
+    required: false
+    default: '[]'
+runs:
+  using: 'composite'
+  steps:
+    - name: Parse setup steps
+      id: parse
+      shell: bash
+      run: |
+        steps='${{ inputs.setup-steps }}'
+        count=$(echo "$steps" | jq '. | length')
+        echo "count=$count" >> $GITHUB_OUTPUT
+        
+        # Export individual step details for conditional execution
+        for i in $(seq 0 $((count - 1))); do
+          step=$(echo "$steps" | jq -r ".[$i]")
+          uses=$(echo "$step" | jq -r '.uses // empty')
+          name=$(echo "$step" | jq -r '.name // empty')
+          
+          echo "step_${i}_uses=$uses" >> $GITHUB_OUTPUT
+          echo "step_${i}_name=$name" >> $GITHUB_OUTPUT
+          echo "step_${i}_with=$(echo "$step" | jq -c '.with // {}')" >> $GITHUB_OUTPUT
+        done
+    
+    # Support for common build tools (extensible pattern)
+    - name: ${{ fromJSON(steps.parse.outputs.step_0_with).name || steps.parse.outputs.step_0_name }}
+      if: steps.parse.outputs.count > 0 && contains(steps.parse.outputs.step_0_uses, 'setup-java')
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ fromJSON(steps.parse.outputs.step_0_with).distribution }}
+        java-version: ${{ fromJSON(steps.parse.outputs.step_0_with).java-version }}
+    
+    - name: ${{ fromJSON(steps.parse.outputs.step_0_with).name || steps.parse.outputs.step_0_name }}
+      if: steps.parse.outputs.count > 0 && contains(steps.parse.outputs.step_0_uses, 'setup-node')
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ fromJSON(steps.parse.outputs.step_0_with).node-version }}
+    
+    - name: ${{ fromJSON(steps.parse.outputs.step_0_with).name || steps.parse.outputs.step_0_name }}
+      if: steps.parse.outputs.count > 0 && contains(steps.parse.outputs.step_0_uses, 'setup-dotnet')
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ fromJSON(steps.parse.outputs.step_0_with).dotnet-version }}
+    
+    - name: ${{ fromJSON(steps.parse.outputs.step_0_with).name || steps.parse.outputs.step_0_name }}
+      if: steps.parse.outputs.count > 0 && contains(steps.parse.outputs.step_0_uses, 'setup-python')
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ fromJSON(steps.parse.outputs.step_0_with).python-version }}
+    
+    # Additional steps (step_1, step_2, etc.) can be added following the same pattern
+    # For now, supporting single setup step per source is sufficient

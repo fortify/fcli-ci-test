@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Build tool configuration for fcli-ci-test source directories",
+  "sources": {
+    "eightball": {
+      "description": "Java Maven application with intentional vulnerabilities",
+      "language": "java",
+      "buildTool": "maven",
+      "gitlabImage": "maven:3.9-eclipse-temurin-17-alpine",
+      "githubSetupSteps": [
+        {
+          "name": "Set up JDK 17",
+          "uses": "actions/setup-java@v4",
+          "with": {
+            "distribution": "temurin",
+            "java-version": "17"
+          }
+        }
+      ],
+      "adoSetupTasks": [
+        {
+          "task": "JavaToolInstaller@0",
+          "displayName": "Set up JDK 17",
+          "inputs": {
+            "versionSpec": "17",
+            "jdkArchitectureOption": "x64",
+            "jdkSourceOption": "PreInstalled"
+          }
+        }
+      ]
+    },
+    "dvna": {
+      "description": "Damn Vulnerable NodeJS Application (DVNA) - MIT License",
+      "language": "javascript",
+      "buildTool": "npm",
+      "gitlabImage": "node:18-alpine",
+      "githubSetupSteps": [
+        {
+          "name": "Set up Node.js 18",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "18"
+          }
+        }
+      ],
+      "adoSetupTasks": [
+        {
+          "task": "NodeTool@0",
+          "displayName": "Set up Node.js 18",
+          "inputs": {
+            "versionSpec": "18"
+          }
+        }
+      ]
+    },
+    "dvpwa": {
+      "description": "Damn Vulnerable Python Web Application (DVPWA) - MIT License",
+      "language": "python",
+      "buildTool": "pip",
+      "gitlabImage": "python:3.9-alpine",
+      "githubSetupSteps": [
+        {
+          "name": "Set up Python 3.9",
+          "uses": "actions/setup-python@v5",
+          "with": {
+            "python-version": "3.9"
+          }
+        }
+      ],
+      "adoSetupTasks": [
+        {
+          "task": "UsePythonVersion@0",
+          "displayName": "Set up Python 3.9",
+          "inputs": {
+            "versionSpec": "3.9",
+            "addToPath": true
+          }
+        }
+      ]
+    }
+  }
+}

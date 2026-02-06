@@ -18,7 +18,7 @@ on:
       source_dirs:
         description: 'Source directories to test (comma-separated)'
         required: false
-        default: 'eightball'
+        default: 'dvna'
       ci_systems:
         description: 'CI systems to test (comma-separated: github:v2, github:v3, gitlab:v2, ado:v1)'
         required: false
@@ -62,6 +62,15 @@ jobs:
           echo "  SOURCE_DIRS: ${SOURCE_DIRS[@]}"
           echo "  OS_LIST: ${OS_LIST[@]}"
           
+          # Read sources configuration
+          if [ -f "sources/config.json" ]; then
+            echo "Loading sources/config.json for build tool configuration"
+            sources_config=$(cat sources/config.json)
+          else
+            echo "WARNING: sources/config.json not found, build tool setup will be skipped"
+            sources_config='{"sources": {}}'
+          fi
+          
           # Build matrix with filtering
           matrix_items=()
           filtered_count=0
@@ -90,7 +99,7 @@ jobs:
                 for os in "${OS_LIST[@]}"; do
                   if echo "$supported_os" | grep -q "$os"; then
                     echo "    Adding: $ci_system / $component / $os"
-                    matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\"}")
+                    matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\",\"github_setup_steps\":\"[]\",\"ado_setup_tasks\":\"[]\",\"gitlab_image\":\"\"}")
                   else
                     echo "    Filtering: $ci_system + $os (not supported)"
                     filtered_count=$((filtered_count + 1))
@@ -101,10 +110,18 @@ jobs:
                 # For ast-scan, iterate products and source_dirs
                 for product in "${PRODUCTS[@]}"; do
                   for source_dir in "${SOURCE_DIRS[@]}"; do
+                    # Get build tool configuration for this source
+                    github_setup_steps=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].githubSetupSteps // []")
+                    ado_setup_tasks=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].adoSetupTasks // []")
+                    gitlab_image=$(echo "$sources_config" | jq -r ".sources[\"$source_dir\"].gitlabImage // \"\"")
+                    
                     for os in "${OS_LIST[@]}"; do
                       if echo "$supported_os" | grep -q "$os"; then
                         echo "    Adding: $ci_system / $product / $component / $source_dir / $os"
-                        matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\"}")
+                        # Escape JSON strings for inclusion in matrix item
+                        github_setup_escaped=$(echo "$github_setup_steps" | jq -c .)
+                        ado_setup_escaped=$(echo "$ado_setup_tasks" | jq -c .)
+                        matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\",\"github_setup_steps\":$github_setup_escaped,\"ado_setup_tasks\":$ado_setup_escaped,\"gitlab_image\":\"$gitlab_image\"}")
                       else
                         echo "    Filtering: $ci_system + $os (not supported)"
                         filtered_count=$((filtered_count + 1))
@@ -449,6 +466,9 @@ jobs:
           # Trigger workflow and capture the time
           trigger_time=$(date -u +%s)
           
+          # Convert setup steps JSON to string for workflow input
+          setup_steps='${{ toJSON(matrix.github_setup_steps) }}'
+          
           gh workflow run test-pipeline.yml \
             --ref ${{ github.ref }} \
             -f version=${{ matrix.version }} \
@@ -457,7 +477,8 @@ jobs:
             -f component=${{ matrix.component }} \
             -f source_dir=sources/${{ matrix.source_dir }} \
             -f os=${{ matrix.os }} \
-            -f fortify_release=${{ steps.fortify-release.outputs.name }}
+            -f fortify_release=${{ steps.fortify-release.outputs.name }} \
+            -f setup_steps="$setup_steps"
           
           echo "Triggered GitHub workflow, waiting for run to start..."
           sleep 10
@@ -530,7 +551,8 @@ jobs:
             -F "variables[COMPONENT]=${{ matrix.component }}" \
             -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
             -F "variables[OS]=${{ matrix.os }}" \
-            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}")
+            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
+            -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
           
           pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
           echo "Pipeline ID: $pipeline_id"
@@ -587,6 +609,10 @@ jobs:
           ADO_PROJ="${{ secrets.ADO_PROJECT }}"
           
           echo "Triggering Azure DevOps pipeline..."
+          
+          # Convert ADO setup tasks to JSON string for pipeline variable
+          ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
+          
           build_response=$(curl -f -s -X POST \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/1/runs?api-version=7.1-preview.1" \
             -H "Authorization: Basic $(echo -n :${{ secrets.ADO_PAT }} | base64)" \
@@ -606,7 +632,8 @@ jobs:
                 \"COMPONENT\": \"${{ matrix.component }}\",
                 \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
                 \"OS\": \"${{ matrix.os }}\",
-                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\"
+                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
+                \"SETUP_TASKS\": $ado_setup_tasks
               }
             }")
           

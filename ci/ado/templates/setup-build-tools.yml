@@ -1,0 +1,38 @@
+parameters:
+  - name: setupTasks
+    type: object
+    default: []
+
+steps:
+  - ${{ each task in parameters.setupTasks }}:
+    # Java setup
+    - ${{ if contains(task.task, 'JavaToolInstaller') }}:
+      - task: JavaToolInstaller@0
+        displayName: ${{ coalesce(task.displayName, 'Set up JDK') }}
+        inputs:
+          versionSpec: ${{ task.inputs.versionSpec }}
+          jdkArchitectureOption: ${{ coalesce(task.inputs.jdkArchitectureOption, 'x64') }}
+          jdkSourceOption: ${{ coalesce(task.inputs.jdkSourceOption, 'PreInstalled') }}
+    
+    # Node.js setup
+    - ${{ if contains(task.task, 'NodeTool') }}:
+      - task: NodeTool@0
+        displayName: ${{ coalesce(task.displayName, 'Set up Node.js') }}
+        inputs:
+          versionSpec: ${{ task.inputs.versionSpec }}
+    
+    # .NET setup
+    - ${{ if contains(task.task, 'UseDotNet') }}:
+      - task: UseDotNet@2
+        displayName: ${{ coalesce(task.displayName, 'Set up .NET') }}
+        inputs:
+          packageType: ${{ coalesce(task.inputs.packageType, 'sdk') }}
+          version: ${{ task.inputs.version }}
+    
+    # Python setup
+    - ${{ if contains(task.task, 'UsePythonVersion') }}:
+      - task: UsePythonVersion@0
+        displayName: ${{ coalesce(task.displayName, 'Set up Python') }}
+        inputs:
+          versionSpec: ${{ task.inputs.versionSpec }}
+          addToPath: ${{ coalesce(task.inputs.addToPath, true) }}

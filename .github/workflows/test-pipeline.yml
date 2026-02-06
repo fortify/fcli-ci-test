@@ -25,6 +25,10 @@ on:
       fortify_release:
         description: 'Fortify release/appversion name'
         required: true
+      setup_steps:
+        description: 'JSON array of build tool setup steps'
+        required: false
+        default: '[]'
   workflow_call:
     inputs:
       version:
@@ -55,6 +59,11 @@ on:
         description: 'Fortify release/appversion name'
         required: true
         type: string
+      setup_steps:
+        description: 'JSON array of build tool setup steps'
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   # Setup component test (product-agnostic)
@@ -90,6 +99,11 @@ jobs:
       - name: Checkout test sources
         uses: actions/checkout@v4
       
+      - name: Setup build tools
+        uses: ./.github/actions/setup-build-tools
+        with:
+          setup-steps: ${{ inputs.setup_steps }}
+      
       - name: Checkout fortify/github-action
         uses: actions/checkout@v4
         with:
@@ -115,6 +129,11 @@ jobs:
     steps:
       - name: Checkout test sources
         uses: actions/checkout@v4
+      
+      - name: Setup build tools
+        uses: ./.github/actions/setup-build-tools
+        with:
+          setup-steps: ${{ inputs.setup_steps }}
       
       - name: Checkout fortify/github-action
         uses: actions/checkout@v4

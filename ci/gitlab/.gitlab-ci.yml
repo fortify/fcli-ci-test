@@ -1,5 +1,5 @@
 # Expected inputs from trigger:
-# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, FORTIFY_RELEASE
+# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, FORTIFY_RELEASE, GITLAB_IMAGE (optional)
 
 # Conditionally include version/component-specific pipelines
 include:
