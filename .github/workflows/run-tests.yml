@@ -333,10 +333,30 @@ jobs:
           vg_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
             -H "Authorization: Basic $(echo -n :$ADO_PAT | base64)" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" 2>&1)
+          
+          curl_exit_code=$?
+          echo "Curl exit code: $curl_exit_code"
+          
+          if [ $curl_exit_code -ne 0 ]; then
+            echo "Error: Curl command failed with exit code $curl_exit_code"
+            echo "Response: $vg_response"
+            exit 1
+          fi
+          
+          echo "Raw response length: ${#vg_response}"
+          echo "First 500 chars of response: ${vg_response:0:500}"
           
           http_code=$(echo "$vg_response" | grep "HTTP_CODE:" | cut -d':' -f2)
           vg_body=$(echo "$vg_response" | sed '/HTTP_CODE:/d')
+          
+          echo "Extracted HTTP code: '$http_code'"
+          
+          if [ -z "$http_code" ]; then
+            echo "Error: Could not extract HTTP code from response"
+            echo "Full response: $vg_response"
+            exit 1
+          fi
           
           if [ "$http_code" != "200" ]; then
             echo "Error: Failed to fetch variable groups (HTTP $http_code)"
