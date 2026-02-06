@@ -3,7 +3,6 @@ include:
   - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@1
     inputs:
       debug: true
-      image: ${GITLAB_IMAGE}
 
 fortify-ast-scan:
   image: ${GITLAB_IMAGE}

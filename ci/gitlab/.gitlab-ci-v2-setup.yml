@@ -3,9 +3,11 @@ include:
   - component: $CI_SERVER_FQDN/Fortify/components/fcli/linux@2
     inputs:
       stage: test
-      job-name: test-v2-setup
-    rules:
-      - if: $VERSION == "v2" && $COMPONENT == "setup"
 
-variables:
-  FCLI_URL: ${FCLI_URL}
+fcli:                        # Needs to match the job name specified above
+  script:
+    - uname -a               
+    - ${FCLI} -V             
+    
+  variables:
+    FCLI_URL: ${FCLI_URL}
