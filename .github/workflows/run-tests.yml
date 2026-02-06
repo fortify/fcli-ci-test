@@ -650,11 +650,34 @@ jobs:
           # Create auth header
           AUTH_HEADER="Authorization: Basic $(printf ":%s" "${{ secrets.ADO_PAT }}" | base64 -w 0)"
           
+          # Find the pipeline ID by querying for pipelines with path azure-pipelines.yml
+          echo "Looking up pipeline ID..."
+          pipelines_response=$(curl -s \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines?api-version=7.1-preview.1" \
+            -H "$AUTH_HEADER")
+          
+          pipeline_id=$(echo "$pipelines_response" | jq -r '.value[] | select(.folder == "\\ci\\ado" or .folder == "/ci/ado" or (.configuration.path // "" | contains("azure-pipelines.yml"))) | .id' | head -n1)
+          
+          # If not found by folder/path, try finding by name or just get the first pipeline
+          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+            echo "Pipeline not found by path, trying first available pipeline..."
+            pipeline_id=$(echo "$pipelines_response" | jq -r '.value[0].id')
+          fi
+          
+          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+            echo "Error: Could not find pipeline ID"
+            echo "Available pipelines:"
+            echo "$pipelines_response" | jq '.value[] | {id, name, folder, path: .configuration.path}'
+            exit 1
+          fi
+          
+          echo "Using pipeline ID: $pipeline_id"
+          
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
           
           build_response=$(curl -s -X POST \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/1/runs?api-version=7.1-preview.1" \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/$pipeline_id/runs?api-version=7.1-preview.1" \
             -H "$AUTH_HEADER" \
             -H "Content-Type: application/json" \
             -d "{
