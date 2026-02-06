@@ -741,7 +741,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-info-${{ strategy.job-index }}
+          name: pipeline-info-${{ matrix.ci_system }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
           path: pipeline-info/
           retention-days: 1
 
