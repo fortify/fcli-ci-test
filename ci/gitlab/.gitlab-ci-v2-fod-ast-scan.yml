@@ -7,7 +7,7 @@ include:
 fortify-ast-scan:
   image: ${GITLAB_IMAGE}
   variables:
-    FCLI_URL: ${FCLI_URL}
+    FCLI_TGZ_URL: ${FCLI_TGZ_URL}
     SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
     FOD_URL: ${FCLI_FT_FOD_URL}
     FOD_CLIENT_ID: ${FCLI_FT_FOD_CLIENT_ID}

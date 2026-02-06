@@ -10,4 +10,4 @@ fcli:                        # Needs to match the job name specified above
     - ${FCLI} -V             
     
   variables:
-    FCLI_URL: ${FCLI_URL}
+    FCLI_TGZ_URL: ${FCLI_TGZ_URL}

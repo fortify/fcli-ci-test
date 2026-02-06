@@ -577,7 +577,7 @@ jobs:
             -F "ref=main" \
             -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
             -F "variables[VERSION]=${{ matrix.version }}" \
-            -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
+            -F "variables[FCLI_TGZ_URL]=${{ steps.fcli-url.outputs.url }}" \
             -F "variables[PRODUCT]=${{ matrix.product }}" \
             -F "variables[COMPONENT]=${{ matrix.component }}" \
             -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
