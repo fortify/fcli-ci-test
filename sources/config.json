@@ -6,7 +6,7 @@
       "description": "Java Maven application with intentional vulnerabilities",
       "language": "java",
       "buildTool": "maven",
-      "gitlabImage": "maven:3.9-eclipse-temurin-17",
+      "gitlabImage": "maven:3.9-eclipse-temurin-17-alpine",
       "githubSetupSteps": [
         {
           "name": "Set up JDK 17",
