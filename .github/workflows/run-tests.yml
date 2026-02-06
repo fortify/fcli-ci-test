@@ -463,12 +463,12 @@ jobs:
       - name: Generate pipeline name
         id: pipeline-name
         run: |
-          # Generate consistent name: fcli version / version / component / product / os
+          # Generate consistent name: fcli version / version / component / product / os / source_dir
           # For setup component, use 'none' for product
           if [ "${{ matrix.component }}" = "setup" ]; then
-            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / none / ${{ matrix.os }}"
+            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / none / ${{ matrix.os }} / ${{ matrix.source_dir }}"
           else
-            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / ${{ matrix.product }} / ${{ matrix.os }}"
+            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / ${{ matrix.product }} / ${{ matrix.os }} / ${{ matrix.source_dir }}"
           fi
           echo "name=$name" >> $GITHUB_OUTPUT
       
