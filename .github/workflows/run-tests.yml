@@ -403,7 +403,7 @@ jobs:
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
 
   test:
-    name: Test ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
+    name: Test fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
     needs: [prepare-matrix, sync-external-repos]
     runs-on: ubuntu-latest
     if: |
@@ -463,12 +463,12 @@ jobs:
       - name: Generate pipeline name
         id: pipeline-name
         run: |
-          # Generate consistent name: version / component / product / os
+          # Generate consistent name: fcli version / version / component / product / os
           # For setup component, use 'none' for product
           if [ "${{ matrix.component }}" = "setup" ]; then
-            name="${{ matrix.version }} / ${{ matrix.component }} / none / ${{ matrix.os }}"
+            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / none / ${{ matrix.os }}"
           else
-            name="${{ matrix.version }} / ${{ matrix.component }} / ${{ matrix.product }} / ${{ matrix.os }}"
+            name="fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.version }} / ${{ matrix.component }} / ${{ matrix.product }} / ${{ matrix.os }}"
           fi
           echo "name=$name" >> $GITHUB_OUTPUT
       
@@ -733,8 +733,9 @@ jobs:
             status="❌ FAIL"
           fi
           
-          # Create a unique filename for this test combination
-          filename="${ci_system//:/_}_${product}_${component}_${source_dir}_${os}.txt"
+          # Create a unique filename for this test combination (sanitize special chars)
+          safe_ci_system=$(echo "$ci_system" | tr ':/' '__')
+          filename="${safe_ci_system}_${product}_${component}_${source_dir}_${os}.txt"
           echo "$status|$url" > "pipeline-info/$filename"
       
       - name: Upload pipeline info
