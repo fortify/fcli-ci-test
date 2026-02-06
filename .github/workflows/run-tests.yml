@@ -345,6 +345,14 @@ jobs:
           
           echo "Found variable group ID: $vg_id"
           
+          # Get full variable group details to preserve project references
+          vg_details=$(curl -s \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
+            -H "$AUTH_HEADER")
+          
+          # Extract existing project references
+          project_refs=$(echo "$vg_details" | jq -c '.variableGroupProjectReferences // []')
+          
           # Build variables JSON
           variables_json='{'
           first=true
@@ -384,7 +392,8 @@ jobs:
               \"id\": $vg_id,
               \"name\": \"fcli-ci-test\",
               \"type\": \"Vsts\",
-              \"variables\": $variables_json
+              \"variables\": $variables_json,
+              \"variableGroupProjectReferences\": $project_refs
             }")
           
           # Check if update was successful
