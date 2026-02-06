@@ -237,7 +237,7 @@ jobs:
             git config user.name "fcli-ci-test"
             git config user.email "fcli-ci-test@fortify.github.io"
             git add .
-            git commit -m "Sync test-run-${{ github.run_id }} from fcli-ci-test@${{ github.sha }}"
+            git commit -m "CI Test Run ${{ github.run_id }} - Sync from fcli-ci-test@${{ github.sha }}"
             git push --force origin HEAD:main
           else
             echo "No changes detected, skipping git push"
@@ -460,7 +460,20 @@ jobs:
           fi
           echo "name=$release" >> $GITHUB_OUTPUT
       
+      - name: Generate pipeline name
+        id: pipeline-name
+        run: |
+          # Generate consistent name: version / component / product / os
+          # For setup component, use 'none' for product
+          if [ "${{ matrix.component }}" = "setup" ]; then
+            name="${{ matrix.version }} / ${{ matrix.component }} / none / ${{ matrix.os }}"
+          else
+            name="${{ matrix.version }} / ${{ matrix.component }} / ${{ matrix.product }} / ${{ matrix.os }}"
+          fi
+          echo "name=$name" >> $GITHUB_OUTPUT
+      
       - name: Trigger GitHub test
+        id: github-trigger
         if: matrix.platform == 'github'
         run: |
           # Trigger workflow and capture the time
@@ -471,6 +484,7 @@ jobs:
           
           gh workflow run test-pipeline.yml \
             --ref ${{ github.ref }} \
+            -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
             -f version=${{ matrix.version }} \
             -f fcli_url=${{ steps.fcli-url.outputs.url }} \
             -f product=${{ matrix.product }} \
@@ -496,7 +510,10 @@ jobs:
             exit 1
           fi
           
+          run_url="https://github.com/${{ github.repository }}/actions/runs/$run_id"
           echo "Found workflow run ID: $run_id"
+          echo "Workflow URL: $run_url"
+          echo "run_url=$run_url" >> $GITHUB_OUTPUT
           echo "Polling for completion (timeout: 30 minutes)..."
           
           # Poll for completion
@@ -532,6 +549,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Trigger GitLab test
+        id: gitlab-trigger
         if: matrix.platform == 'gitlab'
         run: |
           set -e
@@ -540,11 +558,12 @@ jobs:
           GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
           GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
           
-          echo "Triggering GitLab pipeline..."
+          echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
           pipeline_response=$(curl -f -X POST \
             "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
             -F "token=$GITLAB_TRIGGER_TOKEN" \
             -F "ref=main" \
+            -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
             -F "variables[VERSION]=${{ matrix.version }}" \
             -F "variables[FCLI_URL]=${{ steps.fcli-url.outputs.url }}" \
             -F "variables[PRODUCT]=${{ matrix.product }}" \
@@ -555,7 +574,10 @@ jobs:
             -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
           
           pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+          pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
           echo "Pipeline ID: $pipeline_id"
+          echo "Pipeline URL: $pipeline_url"
+          echo "pipeline_url=$pipeline_url" >> $GITHUB_OUTPUT
           
           echo "Polling for completion (timeout: 30 minutes)..."
           timeout=1800
@@ -601,6 +623,7 @@ jobs:
           GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
       
       - name: Trigger ADO test
+        id: ado-trigger
         if: matrix.platform == 'ado'
         run: |
           set -e
@@ -626,6 +649,7 @@ jobs:
                 }
               },
               \"templateParameters\": {
+                \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
                 \"VERSION\": \"${{ matrix.version }}\",
                 \"FCLI_URL\": \"${{ steps.fcli-url.outputs.url }}\",
                 \"PRODUCT\": \"${{ matrix.product }}\",
@@ -638,7 +662,10 @@ jobs:
             }")
           
           build_id=$(echo "$build_response" | jq -r '.id')
+          build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
           echo "Build ID: $build_id"
+          echo "Build URL: $build_url"
+          echo "build_url=$build_url" >> $GITHUB_OUTPUT
           
           echo "Polling for completion (timeout: 30 minutes)..."
           timeout=1800
@@ -678,6 +705,45 @@ jobs:
           exit 1
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
+      
+      - name: Store pipeline info
+        if: always()
+        run: |
+          mkdir -p pipeline-info
+          platform="${{ matrix.platform }}"
+          ci_system="${{ matrix.ci_system }}"
+          product="${{ matrix.product }}"
+          component="${{ matrix.component }}"
+          source_dir="${{ matrix.source_dir }}"
+          os="${{ matrix.os }}"
+          
+          # Get the appropriate URL based on platform
+          if [ "$platform" = "github" ]; then
+            url="${{ steps.github-trigger.outputs.run_url }}"
+          elif [ "$platform" = "gitlab" ]; then
+            url="${{ steps.gitlab-trigger.outputs.pipeline_url }}"
+          elif [ "$platform" = "ado" ]; then
+            url="${{ steps.ado-trigger.outputs.build_url }}"
+          fi
+          
+          # Determine test result
+          if [ "${{ job.status }}" = "success" ]; then
+            status="✅ PASS"
+          else
+            status="❌ FAIL"
+          fi
+          
+          # Create a unique filename for this test combination
+          filename="${ci_system//:/_}_${product}_${component}_${source_dir}_${os}.txt"
+          echo "$status|$url" > "pipeline-info/$filename"
+      
+      - name: Upload pipeline info
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-info-${{ strategy.job-index }}
+          path: pipeline-info/
+          retention-days: 1
 
   summary:
     name: Test Summary
@@ -685,8 +751,54 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
+      - name: Download all pipeline info
+        if: needs.test.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pipeline-info-*
+          path: pipeline-info
+          merge-multiple: true
+        continue-on-error: true
+      
       - name: Create summary
         run: |
           echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Status: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Overall Status:** ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Add pipeline links if available
+          if [ -d "pipeline-info" ] && [ "$(ls -A pipeline-info 2>/dev/null)" ]; then
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Count pass/fail
+            pass_count=0
+            fail_count=0
+            
+            for file in pipeline-info/*.txt; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file" .txt)
+                content=$(cat "$file")
+                
+                # Parse status and URL
+                status=$(echo "$content" | cut -d'|' -f1)
+                url=$(echo "$content" | cut -d'|' -f2)
+                
+                # Parse the filename back to readable format
+                readable_name=$(echo "$filename" | sed 's/_/ / g' | sed 's/github:/GitHub: /; s/gitlab:/GitLab: /; s/ado:/ADO: /')
+                
+                echo "- $status [$readable_name]($url)" >> $GITHUB_STEP_SUMMARY
+                
+                # Count results
+                if echo "$status" | grep -q "PASS"; then
+                  pass_count=$((pass_count + 1))
+                else
+                  fail_count=$((fail_count + 1))
+                fi
+              fi
+            done
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Summary:** $pass_count passed, $fail_count failed" >> $GITHUB_STEP_SUMMARY
+          fi

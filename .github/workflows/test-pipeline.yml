@@ -1,9 +1,12 @@
 name: Test Pipeline
-run-name: ${{ inputs.version }} / ${{ inputs.component }} / ${{ inputs.product }} / ${{ inputs.os }}
+run-name: ${{ inputs.pipeline_name }}
 
 on:
   workflow_dispatch:
     inputs:
+      pipeline_name:
+        description: 'Pipeline display name'
+        required: true
       version:
         description: 'Integration version (v2, v3)'
         required: true
@@ -31,6 +34,10 @@ on:
         default: '[]'
   workflow_call:
     inputs:
+      pipeline_name:
+        description: 'Pipeline display name'
+        required: true
+        type: string
       version:
         description: 'Integration version (v2, v3)'
         required: true

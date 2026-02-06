@@ -1,5 +1,7 @@
 # Expected variables from trigger:
-# VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, SETUP_TASKS (optional JSON array)
+# PIPELINE_NAME, VERSION, FCLI_URL, PRODUCT, COMPONENT, SOURCE_DIR, OS, SETUP_TASKS (optional JSON array)
+
+name: $(PIPELINE_NAME)
 
 trigger: none
 
