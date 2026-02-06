@@ -5,16 +5,22 @@ parameters:
     default: 'ci-test'
   - name: VERSION
     type: string
+    default: ''
   - name: FCLI_URL
     type: string
+    default: ''
   - name: PRODUCT
     type: string
+    default: ''
   - name: COMPONENT
     type: string
+    default: ''
   - name: SOURCE_DIR
     type: string
+    default: ''
   - name: OS
     type: string
+    default: 'linux'
   - name: FORTIFY_RELEASE
     type: string
     default: 'main'
@@ -22,7 +28,7 @@ parameters:
     type: string
     default: '[]'
 
-name: ${{ parameters.PIPELINE_NAME }}
+name: $(Date:yyyyMMdd)$(Rev:.r)
 
 trigger: none
 
@@ -39,31 +45,84 @@ pool:
   vmImage: $(VM_IMAGE)
 
 jobs:
+  # No-op job when parameters aren't set (prevents empty pipeline)
+  - job: no_op
+    displayName: 'No-op (missing parameters)'
+    condition: or(eq('${{ parameters.VERSION }}', ''), eq('${{ parameters.COMPONENT }}', ''))
+    steps:
+      - script: |
+          echo "Pipeline requires trigger parameters (VERSION, COMPONENT, etc.)"
+          echo "This job prevents 'no visible jobs' error when parameters are missing"
+          exit 0
+        displayName: 'Info message'
+
   # Setup test (product-agnostic)
   - job: test_setup
-    displayName: 'Setup Test'
-    condition: and(succeeded(), eq('${{ parameters.COMPONENT }}', 'setup'))
+    displayName: ${{ parameters.PIPELINE_NAME }}
+    condition: and(succeeded(), ne('${{ parameters.VERSION }}', ''), eq('${{ parameters.COMPONENT }}', 'setup'))
     steps:
       - checkout: self
       
-      - task: Bash@3
-        displayName: 'Test setup'
-        inputs:
-          targetType: 'inline'
-          script: |
+      - script: |
+          echo "=== Pipeline Parameters ==="
+          echo "VERSION: ${{ parameters.VERSION }}"
+          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "COMPONENT: ${{ parameters.COMPONENT }}"
+          echo "OS: ${{ parameters.OS }}"
+          echo "=========================="
+        displayName: 'Debug parameters'
+      
+      - ${{ if eq(parameters.OS, 'windows') }}:
+        - pwsh: |
+            Write-Host "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap"
+            npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+          displayName: 'Initialize tools'
+          env:
+            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+        
+        - pwsh: |
+            npx @fortify/setup@v2 env ado
+          displayName: 'Set environment variables'
+        
+        - pwsh: |
+            fcli --version
+          displayName: 'Verify fcli'
+      
+      - ${{ if ne(parameters.OS, 'windows') }}:
+        - bash: |
             echo "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
+          displayName: 'Initialize tools'
+          env:
+            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+        
+        - bash: |
             npx @fortify/setup@v2 env ado
+          displayName: 'Set environment variables'
+        
+        - bash: |
             fcli --version
-        env:
-          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+          displayName: 'Verify fcli'
 
   # FoD ast-scan test
   - job: test_fod_ast_scan
-    displayName: 'FoD AST Scan Test'
-    condition: and(succeeded(), eq('${{ parameters.PRODUCT }}', 'fod'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
+    displayName: ${{ parameters.PIPELINE_NAME }}
+    condition: and(succeeded(), ne('${{ parameters.VERSION }}', ''), eq('${{ parameters.PRODUCT }}', 'fod'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
     steps:
       - checkout: self
+      
+      - script: |
+          echo "=== Pipeline Parameters ==="
+          echo "VERSION: ${{ parameters.VERSION }}"
+          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "PRODUCT: ${{ parameters.PRODUCT }}"
+          echo "COMPONENT: ${{ parameters.COMPONENT }}"
+          echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
+          echo "OS: ${{ parameters.OS }}"
+          echo "FORTIFY_RELEASE: ${{ parameters.FORTIFY_RELEASE }}"
+          echo "SETUP_TASKS: ${{ parameters.SETUP_TASKS }}"
+          echo "=========================="
+        displayName: 'Debug parameters'
       
       - task: Bash@3
         displayName: 'Setup build tools'
@@ -114,16 +173,29 @@ jobs:
             fi
       
       - task: Bash@3
-        displayName: 'Test FoD ast-scan'
+        displayName: 'Test FoD ast-scan - Initialize'
         inputs:
           targetType: 'inline'
           script: |
             echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for FoD"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-            npx @fortify/setup@v2 env ado
-            fcli action run ci
         env:
           FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+      
+      - task: Bash@3
+        displayName: 'Test FoD ast-scan - Set env'
+        inputs:
+          targetType: 'inline'
+          script: |
+            npx @fortify/setup@v2 env ado
+      
+      - task: Bash@3
+        displayName: 'Test FoD ast-scan - Run action'
+        inputs:
+          targetType: 'inline'
+          script: |
+            fcli action run ci
+        env:
           FOD_URL: $(FCLI_FT_FOD_URL)
           FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
@@ -132,10 +204,23 @@ jobs:
 
   # SSC ast-scan test
   - job: test_ssc_ast_scan
-    displayName: 'SSC AST Scan Test'
-    condition: and(succeeded(), eq('${{ parameters.PRODUCT }}', 'ssc'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
+    displayName: ${{ parameters.PIPELINE_NAME }}
+    condition: and(succeeded(), ne('${{ parameters.VERSION }}', ''), eq('${{ parameters.PRODUCT }}', 'ssc'), eq('${{ parameters.COMPONENT }}', 'ast-scan'))
     steps:
       - checkout: self
+      
+      - script: |
+          echo "=== Pipeline Parameters ==="
+          echo "VERSION: ${{ parameters.VERSION }}"
+          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "PRODUCT: ${{ parameters.PRODUCT }}"
+          echo "COMPONENT: ${{ parameters.COMPONENT }}"
+          echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
+          echo "OS: ${{ parameters.OS }}"
+          echo "FORTIFY_RELEASE: ${{ parameters.FORTIFY_RELEASE }}"
+          echo "SETUP_TASKS: ${{ parameters.SETUP_TASKS }}"
+          echo "=========================="
+        displayName: 'Debug parameters'
       
       - task: Bash@3
         displayName: 'Setup build tools'
@@ -186,16 +271,29 @@ jobs:
             fi
       
       - task: Bash@3
-        displayName: 'Test SSC ast-scan'
+        displayName: 'Test SSC ast-scan - Initialize'
         inputs:
           targetType: 'inline'
           script: |
             echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for SSC"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-            npx @fortify/setup@v2 env ado
-            fcli action run ci
         env:
           FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+      
+      - task: Bash@3
+        displayName: 'Test SSC ast-scan - Set env'
+        inputs:
+          targetType: 'inline'
+          script: |
+            npx @fortify/setup@v2 env ado
+      
+      - task: Bash@3
+        displayName: 'Test SSC ast-scan - Run action'
+        inputs:
+          targetType: 'inline'
+          script: |
+            fcli action run ci
+        env:
           SSC_URL: $(FCLI_FT_SSC_URL)
           SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
           SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)
