@@ -326,87 +326,27 @@ jobs:
           ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
           
           echo "Syncing secrets to Azure DevOps Variable Group ($ADO_ORG/$ADO_PROJ)..."
-          echo "Org: '$ADO_ORG'"
-          echo "Project: '$ADO_PROJ'"
           
-          # Check if PAT is set
-          if [ -z "$ADO_PAT" ]; then
-            echo "Error: ADO_PAT is not set"
-            exit 1
-          fi
-          echo "PAT length: ${#ADO_PAT}"
-          
-          # Create auth header properly
+          # Create auth header
           AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
           
-          # Test basic connectivity first
-          echo "Testing API connectivity..."
-          test_response=$(curl -s -o /dev/null -w "%{http_code}" \
+          # Get existing variable group
+          echo "Fetching fcli-ci-test variable group..."
+          vg_response=$(curl -s \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
             -H "$AUTH_HEADER")
           
-          echo "Test HTTP response code: $test_response"
-          
-          if [ "$test_response" = "000" ]; then
-            echo "Error: Unable to connect to Azure DevOps API"
-            exit 1
-          fi
-          
-          if [ "$test_response" = "401" ]; then
-            echo "Error: Authentication failed - check ADO_PAT secret"
-            exit 1
-          fi
-          
-          if [ "$test_response" = "404" ]; then
-            echo "Error: Project not found - check organization and project names"
-            exit 1
-          fi
-          
-          # Get or create variable group
-          echo "Fetching existing variable groups..."
-          vg_response=$(curl -s \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-            -H "$AUTH_HEADER" \
-            -H "Content-Type: application/json")
-          
-          echo "Response body (first 500 chars): ${vg_response:0:500}"
-          
-          # Find fcli-ci-test variable group
-          vg_id=$(echo "$vg_response" | jq -r '.value[]? | select(.name == "fcli-ci-test") | .id')
+          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
           
           if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
-            echo "Creating variable group..."
-            vg_create=$(curl -s -X POST \
-              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-              -H "$AUTH_HEADER" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"name\": \"fcli-ci-test\",
-                \"description\": \"fcli CI test variables\",
-                \"type\": \"Vsts\",
-                \"variables\": {},
-                \"variableGroupProjectReferences\": [{
-                  \"name\": \"fcli-ci-test\",
-                  \"projectReference\": {
-                    \"name\": \"$ADO_PROJ\"
-                  }
-                }]
-              }")
-            
-            echo "Create response: ${vg_create:0:200}"
-            vg_id=$(echo "$vg_create" | jq -r '.id')
-            
-            if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
-              echo "Error: Failed to create variable group"
-              echo "Full response: $vg_create"
-              exit 1
-            fi
+            echo "Error: Variable group 'fcli-ci-test' not found. Please create it manually in Azure DevOps."
+            exit 1
           fi
           
-          echo "Variable Group ID: $vg_id"
+          echo "Found variable group ID: $vg_id"
           
           # Build variables JSON
-          variables_json='{"variables":{'
+          variables_json='{'
           first=true
           
           # Add regular variables (URLs)
@@ -432,10 +372,10 @@ jobs:
               first=false
             fi
           done
-          variables_json="$variables_json}}"
+          variables_json="$variables_json}"
           
           # Update variable group
-          echo "Updating variable group ID $vg_id with secrets..."
+          echo "Updating variable group with secrets..."
           update_response=$(curl -s -X PUT \
             "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
             -H "$AUTH_HEADER" \
@@ -444,16 +384,14 @@ jobs:
               \"id\": $vg_id,
               \"name\": \"fcli-ci-test\",
               \"type\": \"Vsts\",
-              $variables_json
+              \"variables\": $variables_json
             }")
           
-          echo "Update response (first 200 chars): ${update_response:0:200}"
-          
-          # Check if update was successful (check for id in response)
+          # Check if update was successful
           updated_id=$(echo "$update_response" | jq -r '.id // empty')
           if [ -z "$updated_id" ]; then
             echo "Error: Failed to update variable group"
-            echo "Full response: $update_response"
+            echo "Response: $update_response"
             exit 1
           fi
           
