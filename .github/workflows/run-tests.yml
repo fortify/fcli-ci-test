@@ -786,12 +786,16 @@ jobs:
           safe_ci_system=$(echo "$ci_system" | tr ':/' '__')
           filename="${safe_ci_system}_${product}_${component}_${source_dir}_${os}.txt"
           echo "$status|$url" > "pipeline-info/$filename"
+          
+          # Sanitize version for artifact name (remove special chars)
+          safe_version=$(echo "${{ matrix.version }}" | tr '/:' '__')
+          echo "safe_version=$safe_version" >> $GITHUB_ENV
       
       - name: Upload pipeline info
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-info-${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
+          name: pipeline-info-${{ matrix.platform }}-${{ env.safe_version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
           path: pipeline-info/
           retention-days: 1
 

@@ -217,7 +217,7 @@ jobs:
       - script: |
           echo "=== Pipeline Parameters ==="
           echo "VERSION: ${{ parameters.VERSION }}"
-          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "FCLI_VERSION: ${{ parameters.FCLI_VERSION }}"
           echo "PRODUCT: ${{ parameters.PRODUCT }}"
           echo "COMPONENT: ${{ parameters.COMPONENT }}"
           echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
