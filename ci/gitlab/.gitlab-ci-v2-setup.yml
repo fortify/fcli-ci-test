@@ -3,11 +3,9 @@ include:
   - component: $CI_SERVER_FQDN/Fortify/components/fcli/linux@2
     inputs:
       stage: test
+      fcli-version: ${FCLI_VERSION}
 
 fcli:                        # Needs to match the job name specified above
   script:
     - uname -a               
-    - ${FCLI} -V             
-    
-  variables:
-    FCLI_TGZ_URL: ${FCLI_TGZ_URL}
+    - ${FCLI} -V

@@ -6,7 +6,7 @@ parameters:
   - name: VERSION
     type: string
     default: ''
-  - name: FCLI_URL
+  - name: FCLI_VERSION
     type: string
     default: ''
   - name: PRODUCT
@@ -66,7 +66,7 @@ jobs:
       - script: |
           echo "=== Pipeline Parameters ==="
           echo "VERSION: ${{ parameters.VERSION }}"
-          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "FCLI_VERSION: ${{ parameters.FCLI_VERSION }}"
           echo "COMPONENT: ${{ parameters.COMPONENT }}"
           echo "OS: ${{ parameters.OS }}"
           echo "=========================="
@@ -80,14 +80,14 @@ jobs:
             fcli --version
           displayName: 'Test 1: Shell approach'
           env:
-            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+            FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - pwsh: |
             Write-Host "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap with ADO approach"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
           displayName: 'Test 2: ADO approach - Initialize'
           env:
-            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+            FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - pwsh: |
             npx @fortify/setup@v2 env ado
@@ -105,14 +105,14 @@ jobs:
             fcli --version
           displayName: 'Test 1: Shell approach'
           env:
-            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+            FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - bash: |
             echo "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap with ADO approach"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
           displayName: 'Test 2: ADO approach - Initialize'
           env:
-            FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+            FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - bash: |
             npx @fortify/setup@v2 env ado
@@ -132,7 +132,7 @@ jobs:
       - script: |
           echo "=== Pipeline Parameters ==="
           echo "VERSION: ${{ parameters.VERSION }}"
-          echo "FCLI_URL: ${{ parameters.FCLI_URL }}"
+          echo "FCLI_VERSION: ${{ parameters.FCLI_VERSION }}"
           echo "PRODUCT: ${{ parameters.PRODUCT }}"
           echo "COMPONENT: ${{ parameters.COMPONENT }}"
           echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
@@ -200,7 +200,7 @@ jobs:
             source <(npx @fortify/setup@v2 env shell)
             fcli action run ci
         env:
-          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+          FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
           FOD_URL: $(FCLI_FT_FOD_URL)
           FOD_CLIENT_ID: $(FCLI_FT_FOD_CLIENT_ID)
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
@@ -285,7 +285,7 @@ jobs:
             source <(npx @fortify/setup@v2 env shell)
             fcli action run ci
         env:
-          FCLI_BOOTSTRAP_URL: ${{ parameters.FCLI_URL }}
+          FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
           SSC_URL: $(FCLI_FT_SSC_URL)
           SSC_TOKEN: $(FCLI_FT_SSC_TOKEN)
           SC_SAST_TOKEN: $(FCLI_FT_SC_SAST_TOKEN)

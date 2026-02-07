@@ -443,23 +443,6 @@ jobs:
             echo "is_local=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Construct fcli URL
-        id: fcli-url
-        run: |
-          os="${{ matrix.os }}"
-          version="${{ github.event.inputs.fcli_version }}"
-          
-          if [ "$os" = "windows" ]; then
-            artifact="fcli-windows.zip"
-          elif [ "$os" = "mac" ]; then
-            artifact="fcli-mac.tgz"
-          else
-            artifact="fcli-linux.tgz"
-          fi
-          
-          url="https://github.com/fortify/fcli/releases/download/$version/$artifact"
-          echo "url=$url" >> $GITHUB_OUTPUT
-      
       - name: Generate Fortify release/appversion name
         id: fortify-release
         run: |
@@ -498,7 +481,7 @@ jobs:
             --ref ${{ github.ref }} \
             -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
             -f version=${{ matrix.version }} \
-            -f fcli_url=${{ steps.fcli-url.outputs.url }} \
+            -f fcli_version=${{ github.event.inputs.fcli_version }} \
             -f product=${{ matrix.product }} \
             -f component=${{ matrix.component }} \
             -f source_dir=sources/${{ matrix.source_dir }} \
@@ -577,7 +560,7 @@ jobs:
             -F "ref=main" \
             -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
             -F "variables[VERSION]=${{ matrix.version }}" \
-            -F "variables[FCLI_TGZ_URL]=${{ steps.fcli-url.outputs.url }}" \
+            -F "variables[FCLI_VERSION]=${{ github.event.inputs.fcli_version }}" \
             -F "variables[PRODUCT]=${{ matrix.product }}" \
             -F "variables[COMPONENT]=${{ matrix.component }}" \
             -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
@@ -680,7 +663,7 @@ jobs:
           echo "=== Pipeline Trigger Parameters ==="
           echo "PIPELINE_NAME: ${{ steps.pipeline-name.outputs.name }}"
           echo "VERSION: ${{ matrix.version }}"
-          echo "FCLI_URL: ${{ steps.fcli-url.outputs.url }}"
+          echo "FCLI_VERSION: ${{ github.event.inputs.fcli_version }}"
           echo "PRODUCT: ${{ matrix.product }}"
           echo "COMPONENT: ${{ matrix.component }}"
           echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
@@ -704,7 +687,7 @@ jobs:
               \"templateParameters\": {
                 \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
                 \"VERSION\": \"${{ matrix.version }}\",
-                \"FCLI_URL\": \"${{ steps.fcli-url.outputs.url }}\",
+                \"FCLI_VERSION\": \"${{ github.event.inputs.fcli_version }}\",
                 \"PRODUCT\": \"${{ matrix.product }}\",
                 \"COMPONENT\": \"${{ matrix.component }}\",
                 \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",

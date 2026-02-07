@@ -3,11 +3,11 @@ include:
   - component: $CI_SERVER_FQDN/Fortify/components/ast-scan/linux@1
     inputs:
       debug: true
+      fcli-version: ${FCLI_VERSION}
 
 fortify-ast-scan:
   image: ${GITLAB_IMAGE}
   variables:
-    FCLI_TGZ_URL: ${FCLI_TGZ_URL}
     SOURCE_DIR: ${CI_PROJECT_DIR}/${SOURCE_DIR}
     SSC_URL: ${FCLI_FT_SSC_URL}
     SSC_TOKEN: ${FCLI_FT_SSC_TOKEN}

@@ -10,8 +10,8 @@ on:
       version:
         description: 'Integration version (v2, v3)'
         required: true
-      fcli_url:
-        description: 'Fcli artifact URL'
+      fcli_version:
+        description: 'Fcli version (e.g., v3, dev_v3.x)'
         required: true
       product:
         description: 'Product (fod or ssc)'
@@ -42,8 +42,8 @@ on:
         description: 'Integration version (v2, v3)'
         required: true
         type: string
-      fcli_url:
-        description: 'Fcli artifact URL'
+      fcli_version:
+        description: 'Fcli version (e.g., v3, dev_v3.x)'
         required: true
         type: string
       product:
@@ -91,7 +91,7 @@ jobs:
         with:
           fcli: bootstrapped
         env:
-          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+          FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
       
       - name: Verify fcli installation
         run: fcli --version
@@ -121,7 +121,7 @@ jobs:
       - name: Run AST scan action
         uses: ./github-action
         env:
-          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+          FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
           SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
           FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
@@ -152,7 +152,7 @@ jobs:
       - name: Run AST scan action
         uses: ./github-action
         env:
-          FCLI_BOOTSTRAP_URL: ${{ inputs.fcli_url }}
+          FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
           SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
           SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
