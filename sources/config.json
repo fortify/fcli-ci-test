@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Build tool configuration for fcli-ci-test source directories",
   "sources": {
-    "eightball": {
+    "java": {
       "description": "Java Maven application with intentional vulnerabilities",
       "language": "java",
       "buildTool": "maven",
@@ -29,31 +29,31 @@
         }
       ]
     },
-    "dvna": {
-      "description": "Damn Vulnerable NodeJS Application (DVNA) - MIT License",
-      "language": "javascript",
+    "node": {
+      "description": "InsecureRestAPI - Insecure NodeJS/Express REST API - GPLv3",
+      "language": "typescript",
       "buildTool": "npm",
-      "gitlabImage": "node:18-alpine",
+      "gitlabImage": "node:20-alpine",
       "githubSetupSteps": [
         {
-          "name": "Set up Node.js 18",
+          "name": "Set up Node.js 20",
           "uses": "actions/setup-node@v4",
           "with": {
-            "node-version": "18"
+            "node-version": "20"
           }
         }
       ],
       "adoSetupTasks": [
         {
           "task": "NodeTool@0",
-          "displayName": "Set up Node.js 18",
+          "displayName": "Set up Node.js 20",
           "inputs": {
-            "versionSpec": "18"
+            "versionSpec": "20"
           }
         }
       ]
     },
-    "dvpwa": {
+    "python": {
       "description": "Damn Vulnerable Python Web Application (DVPWA) - MIT License",
       "language": "python",
       "buildTool": "pip",

@@ -18,11 +18,11 @@ on:
       source_dirs:
         description: 'Source directories to test (comma-separated)'
         required: false
-        default: 'dvna'
+        default: 'node'
       ci_systems:
         description: 'CI systems to test (comma-separated: github:v2, github:v3, gitlab:v2, ado:v1)'
         required: false
-        default: 'github:feat/fcli-ci,gitlab:v2'
+        default: 'github:feat/fcli-ci,gitlab:v2,ado:v0'
       os:
         description: 'Operating systems to test (comma-separated: linux, windows, mac)'
         required: false

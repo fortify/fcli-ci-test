@@ -1,0 +1,28 @@
+{
+  "App": {
+    "name": "InsecureRestAPI",
+    "version": "1.0",
+    "description": "InsecureRestAPI - An insecure NodeJS/Express/MongoDB REST API for educational purposes.",
+    "port":  5000,
+    "dbConfig": {
+      "host": "127.0.0.1",
+      "port": 27017,
+      "user": "iwa-dev",
+      "password": "iwa-dev",
+      "database": "iwa-dev"
+    },
+    "auth0": {
+      "domain": "https://dev-ahui5f878pgtbrpr.us.auth0.com",
+      "audience": "https://iwa-api.onfortify.com"
+    },
+    "apiConfig": {
+      "url": "http://localhost:5000",
+      "version": "v1",
+      "description": "Development server"
+    },
+    "staticAccessToken": "demo-access-token",
+    "jwtSecret": "SECRET",
+    "jwtExpiration": 36000,
+    "encryptionKey": "lakdsljkalkjlksdfkl"
+  }
+}
