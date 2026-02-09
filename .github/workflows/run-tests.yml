@@ -591,18 +591,21 @@ jobs:
             -f setup_steps="$setup_steps"
           
           echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
+          pipeline_name="${{ steps.pipeline-name.outputs.name }}"
+          echo "Looking for run with name: $pipeline_name"
           sleep 10
           
-          # Find the most recent run that started after our trigger
+          # Find the run by matching displayTitle (run-name) and creation time
           run_id=$(gh run list \
             --repo "$GITHUB_REPO" \
             --workflow=test-pipeline.yml \
-            --limit=10 \
-            --json databaseId,createdAt,status \
-            --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
+            --limit=20 \
+            --json databaseId,createdAt,displayTitle,status \
+            --jq --arg name "$pipeline_name" --arg trigger_time "$trigger_time" \
+              '[.[] | select(.createdAt | fromdateiso8601 > ($trigger_time | tonumber)) | select(.displayTitle == $name)] | .[0].databaseId')
           
           if [ -z "$run_id" ]; then
-            echo "Error: Could not find triggered workflow run"
+            echo "Error: Could not find triggered workflow run with displayTitle='$pipeline_name'"
             exit 1
           fi
           
