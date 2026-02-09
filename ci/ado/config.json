@@ -2,11 +2,13 @@
   "repos": [
     {
       "tag": "public",
-      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-public/_git/fcli-ci-test-public"
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-public/_git/fcli-ci-test-public",
+      "pat_secret": "ADO_PAT"
     },
     {
       "tag": "private",
-      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-private/_git/fcli-ci-test-private"
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-private/_git/fcli-ci-test-private",
+      "pat_secret": "ADO_PAT"
     }
   ],
   "supportedOs": ["linux", "windows", "mac"],

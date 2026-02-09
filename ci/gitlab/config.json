@@ -2,11 +2,15 @@
   "repos": [
     {
       "tag": "public",
-      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-public"
+      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-public",
+      "pat_secret": "GITLAB_PUBLIC_TOKEN",
+      "trigger_secret": "GITLAB_PUBLIC_TRIGGER_TOKEN"
     },
     {
       "tag": "private",
-      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-private"
+      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-private",
+      "pat_secret": "GITLAB_PRIVATE_TOKEN",
+      "trigger_secret": "GITLAB_PRIVATE_TRIGGER_TOKEN"
     }
   ],
   "supportedOs": ["linux"],

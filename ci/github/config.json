@@ -2,11 +2,13 @@
   "repos": [
     {
       "tag": "public",
-      "url": "https://github.com/fortify/fcli-ci-test-public"
+      "url": "https://github.com/fortify/fcli-ci-test-public",
+      "pat_secret": "GH_PAT"
     },
     {
       "tag": "private",
-      "url": "https://github.com/fortify/fcli-ci-test-private"
+      "url": "https://github.com/fortify/fcli-ci-test-private",
+      "pat_secret": "GH_PAT"
     }
   ],
   "supportedOs": ["linux", "windows", "mac"],

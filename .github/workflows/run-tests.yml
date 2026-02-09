@@ -179,6 +179,19 @@ jobs:
     strategy:
       matrix:
         platform: [github, gitlab, ado]
+    env:
+      # All potential secrets - scripts will dynamically select based on config.json
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITLAB_PUBLIC_TOKEN: ${{ secrets.GITLAB_PUBLIC_TOKEN }}
+      GITLAB_PRIVATE_TOKEN: ${{ secrets.GITLAB_PRIVATE_TOKEN }}
+      ADO_PAT: ${{ secrets.ADO_PAT }}
+      # Fortify test credentials
+      FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+      FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+      FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+      FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+      FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+      FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -205,20 +218,25 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/$PLATFORM/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             PIPELINE_FILE=$([ "$PLATFORM" = "gitlab" ] && echo ".gitlab-ci.yml" || echo "azure-pipelines.yml")
             
             echo "===================================="
             echo "Syncing $PLATFORM repository '$REPO_TAG': $REPO_URL"
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
+            
+            # Get the PAT value using variable indirection
+            PAT_VALUE="${!PAT_SECRET}"
             
             # Set up authentication based on platform
             if [ "$PLATFORM" = "gitlab" ]; then
-              AUTH_URL="https://oauth2:$GITLAB_TOKEN@${REPO_URL#https://}"
+              AUTH_URL="https://oauth2:$PAT_VALUE@${REPO_URL#https://}"
             elif [ "$PLATFORM" = "ado" ]; then
-              AUTH_URL="https://anything:$ADO_PAT@${REPO_URL#https://}"
+              AUTH_URL="https://anything:$PAT_VALUE@${REPO_URL#https://}"
             else
-              # GitHub - use GH_PAT for cross-repo access
-              AUTH_URL="https://x-access-token:$GH_PAT@${REPO_URL#https://}"
+              # GitHub
+              AUTH_URL="https://x-access-token:$PAT_VALUE@${REPO_URL#https://}"
             fi
             
             # Clone repo to temp directory
@@ -261,10 +279,6 @@ jobs:
             
             echo "✓ Repository '$REPO_TAG' synced successfully"
           done
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          ADO_PAT: ${{ secrets.ADO_PAT }}
       
       - name: Sync GitLab secrets and variables
         if: steps.check.outputs.needed == 'true' && matrix.platform == 'gitlab'
@@ -275,10 +289,15 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/gitlab/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+            
+            # Get the PAT value using variable indirection
+            GITLAB_TOKEN="${!PAT_SECRET}"
             
             echo "===================================="
             echo "Syncing variables/secrets to GitLab repo '$REPO_TAG'..."
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
             
             # Sync regular variables (non-masked)
@@ -327,14 +346,6 @@ jobs:
             
             echo "✓ GitLab secrets and variables synced to '$REPO_TAG' successfully"
           done
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
-          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
       
       - name: Sync ADO secrets
         if: steps.check.outputs.needed == 'true' && matrix.platform == 'ado'
@@ -345,11 +356,16 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/ado/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
             ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
             
+            # Get the PAT value using variable indirection
+            ADO_PAT="${!PAT_SECRET}"
+            
             echo "===================================="
             echo "Syncing secrets to Azure DevOps repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)..."
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
             
             # Create auth header
@@ -434,14 +450,6 @@ jobs:
             
             echo "✓ Azure DevOps secrets synced to '$REPO_TAG' successfully"
           done
-        env:
-          ADO_PAT: ${{ secrets.ADO_PAT }}
-          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
       
       - name: Sync GitHub secrets and variables
         if: steps.check.outputs.needed == 'true' && matrix.platform == 'github'
@@ -452,10 +460,16 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/github/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
+            
+            # Get the PAT value using variable indirection
+            GH_TOKEN="${!PAT_SECRET}"
+            export GH_TOKEN
             
             echo "===================================="
             echo "Syncing secrets/variables to GitHub repo '$REPO_TAG'..."
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
             
             # Sync regular variables (not encrypted)
@@ -481,14 +495,6 @@ jobs:
             
             echo "✓ GitHub secrets and variables synced to '$REPO_TAG' successfully"
           done
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
-          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
-          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
-          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
-          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
-          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
 
   test:
     name: Test fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
@@ -502,6 +508,14 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      # All potential secrets - scripts will dynamically select based on config.json
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITLAB_PUBLIC_TOKEN: ${{ secrets.GITLAB_PUBLIC_TOKEN }}
+      GITLAB_PRIVATE_TOKEN: ${{ secrets.GITLAB_PRIVATE_TOKEN }}
+      GITLAB_PUBLIC_TRIGGER_TOKEN: ${{ secrets.GITLAB_PUBLIC_TRIGGER_TOKEN }}
+      GITLAB_PRIVATE_TRIGGER_TOKEN: ${{ secrets.GITLAB_PRIVATE_TRIGGER_TOKEN }}
+      ADO_PAT: ${{ secrets.ADO_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -544,10 +558,16 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/github/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
+            
+            # Get the PAT value using variable indirection and export for gh CLI
+            GH_TOKEN="${!PAT_SECRET}"
+            export GH_TOKEN
             
             echo "===================================="
             echo "Triggering GitHub test in repo '$REPO_TAG' ($GITHUB_REPO)"
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
             
             # Trigger workflow and capture the time
@@ -638,8 +658,6 @@ jobs:
             
             repo_index=$((repo_index + 1))
           done
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
       
       - name: Trigger GitLab test
         id: gitlab-trigger
@@ -652,10 +670,18 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/gitlab/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
+            TRIGGER_SECRET=$(echo "$repo" | jq -r '.trigger_secret')
             GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+            
+            # Get the PAT and trigger token values using variable indirection
+            GITLAB_TOKEN="${!PAT_SECRET}"
+            GITLAB_TRIGGER_TOKEN="${!TRIGGER_SECRET}"
             
             echo "===================================="
             echo "Triggering GitLab pipeline in repo '$REPO_TAG'"
+            echo "Using PAT secret: $PAT_SECRET"
+            echo "Using trigger secret: $TRIGGER_SECRET"
             echo "===================================="
             
             echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
@@ -742,9 +768,6 @@ jobs:
             
             repo_index=$((repo_index + 1))
           done
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
       
       - name: Trigger ADO test
         id: ado-trigger
@@ -760,12 +783,17 @@ jobs:
           for repo in $(jq -c '.repos[]' "ci/ado/config.json"); do
             REPO_TAG=$(echo "$repo" | jq -r '.tag')
             ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
+            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
             ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
             ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
             ADO_REPO=$(echo "$ADO_REPO_URL" | sed 's|.*/||')
             
+            # Get the PAT value using variable indirection
+            ADO_PAT="${!PAT_SECRET}"
+            
             echo "===================================="
             echo "Triggering Azure DevOps pipeline in repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)"
+            echo "Using PAT secret: $PAT_SECRET"
             echo "===================================="
             
             # Create auth header
@@ -909,8 +937,6 @@ jobs:
             
             repo_index=$((repo_index + 1))
           done
-        env:
-          ADO_PAT: ${{ secrets.ADO_PAT }}
       
       - name: Upload pipeline info
         if: always()
