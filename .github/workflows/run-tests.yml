@@ -600,8 +600,8 @@ jobs:
             --repo "$GITHUB_REPO" \
             --workflow=test-pipeline.yml \
             --limit=20 \
-            --json databaseId,createdAt,displayTitle,status \
-            --jq --arg name "$pipeline_name" --arg trigger_time "$trigger_time" \
+            --json databaseId,createdAt,displayTitle,status | \
+            jq --arg name "$pipeline_name" --arg trigger_time "$trigger_time" -r \
               '[.[] | select(.createdAt | fromdateiso8601 > ($trigger_time | tonumber)) | select(.displayTitle == $name)] | .[0].databaseId')
           
           if [ -z "$run_id" ]; then
