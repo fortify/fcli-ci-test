@@ -96,45 +96,51 @@ jobs:
             supported_os=$(jq -r '.supportedOs[]' "ci/$platform/config.json" 2>/dev/null | tr '\n' ',')
             echo "  Supported OS for $platform: $supported_os"
             
-            for component in "${COMPONENTS[@]}"; do
-              echo "  Processing component: $component"
-              # For setup component, no need to iterate products (product-agnostic)
-              if [ "$component" = "setup" ]; then
-                for os in "${OS_LIST[@]}"; do
-                  if echo "$supported_os" | grep -q "$os"; then
-                    echo "    Adding: $ci_system / $component / $os"
-                    matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\",\"github_setup_steps\":\"[]\",\"ado_setup_tasks\":\"[]\",\"gitlab_image\":\"\"}")
-                  else
-                    echo "    Filtering: $ci_system + $os (not supported)"
-                    filtered_count=$((filtered_count + 1))
-                    filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
-                  fi
-                done
-              else
-                # For ast-scan, iterate products and source_dirs
-                for product in "${PRODUCTS[@]}"; do
-                  for source_dir in "${SOURCE_DIRS[@]}"; do
-                    # Get build tool configuration for this source
-                    github_setup_steps=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].githubSetupSteps // []")
-                    ado_setup_tasks=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].adoSetupTasks // []")
-                    gitlab_image=$(echo "$sources_config" | jq -r ".sources[\"$source_dir\"].gitlabImage // \"\"")
-                    
-                    for os in "${OS_LIST[@]}"; do
-                      if echo "$supported_os" | grep -q "$os"; then
-                        echo "    Adding: $ci_system / $product / $component / $source_dir / $os"
-                        # Escape JSON strings for inclusion in matrix item
-                        github_setup_escaped=$(echo "$github_setup_steps" | jq -c .)
-                        ado_setup_escaped=$(echo "$ado_setup_tasks" | jq -c .)
-                        matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\",\"github_setup_steps\":$github_setup_escaped,\"ado_setup_tasks\":$ado_setup_escaped,\"gitlab_image\":\"$gitlab_image\"}")
-                      else
-                        echo "    Filtering: $ci_system + $os (not supported)"
-                        filtered_count=$((filtered_count + 1))
-                        filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
-                      fi
+            # Loop through all repos for this platform
+            for repo in $(jq -c '.repos[]' "ci/$platform/config.json"); do
+              repo_tag=$(echo "$repo" | jq -r '.tag')
+              echo "  Processing repo: $repo_tag"
+              
+              for component in "${COMPONENTS[@]}"; do
+                echo "    Processing component: $component"
+                # For setup component, no need to iterate products (product-agnostic)
+                if [ "$component" = "setup" ]; then
+                  for os in "${OS_LIST[@]}"; do
+                    if echo "$supported_os" | grep -q "$os"; then
+                      echo "      Adding: $ci_system / $repo_tag / $component / $os"
+                      matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\",\"github_setup_steps\":\"[]\",\"ado_setup_tasks\":\"[]\",\"gitlab_image\":\"\"}")
+                    else
+                      echo "      Filtering: $ci_system + $os (not supported)"
+                      filtered_count=$((filtered_count + 1))
+                      filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                    fi
+                  done
+                else
+                  # For ast-scan, iterate products and source_dirs
+                  for product in "${PRODUCTS[@]}"; do
+                    for source_dir in "${SOURCE_DIRS[@]}"; do
+                      # Get build tool configuration for this source
+                      github_setup_steps=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].githubSetupSteps // []")
+                      ado_setup_tasks=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].adoSetupTasks // []")
+                      gitlab_image=$(echo "$sources_config" | jq -r ".sources[\"$source_dir\"].gitlabImage // \"\"")
+                      
+                      for os in "${OS_LIST[@]}"; do
+                        if echo "$supported_os" | grep -q "$os"; then
+                          echo "      Adding: $ci_system / $repo_tag / $product / $component / $source_dir / $os"
+                          # Escape JSON strings for inclusion in matrix item
+                          github_setup_escaped=$(echo "$github_setup_steps" | jq -c .)
+                          ado_setup_escaped=$(echo "$ado_setup_tasks" | jq -c .)
+                          matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\",\"github_setup_steps\":$github_setup_escaped,\"ado_setup_tasks\":$ado_setup_escaped,\"gitlab_image\":\"$gitlab_image\"}")
+                        else
+                          echo "      Filtering: $ci_system + $os (not supported)"
+                          filtered_count=$((filtered_count + 1))
+                          filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                        fi
+                      done
                     done
                   done
-                done
-              fi
+                fi
+              done
             done
           done
           
@@ -169,7 +175,7 @@ jobs:
           echo "${{ steps.create-matrix.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Combinations" >> $GITHUB_STEP_SUMMARY
-          echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.repo_tag) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
 
   # Sync external CI repositories (GitLab, ADO) once before running tests
   sync-external-repos:
@@ -497,7 +503,7 @@ jobs:
           done
 
   test:
-    name: Test fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.ci_system }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
+    name: Test fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.ci_system }} / ${{ matrix.repo_tag }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
     needs: [prepare-matrix, sync-external-repos]
     runs-on: ubuntu-latest
     if: |
@@ -553,110 +559,106 @@ jobs:
           # Convert setup steps JSON to string for workflow input
           setup_steps='${{ toJSON(matrix.github_setup_steps) }}'
           
-          # Loop through all GitHub repos  
-          repo_index=0
-          for repo in $(jq -c '.repos[]' "ci/github/config.json"); do
-            REPO_TAG=$(echo "$repo" | jq -r '.tag')
-            GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
-            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
-            GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
+          # Get repo info from matrix
+          REPO_TAG="${{ matrix.repo_tag }}"
+          repo=$(jq -c ".repos[] | select(.tag == \"$REPO_TAG\")" "ci/github/config.json")
+          GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
+          PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
+          GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
+          
+          # Get the PAT value using variable indirection and export for gh CLI
+          GH_TOKEN="${!PAT_SECRET}"
+          export GH_TOKEN
+          
+          echo "===================================="
+          echo "Triggering GitHub test in repo '$REPO_TAG' ($GITHUB_REPO)"
+          echo "Using PAT secret: $PAT_SECRET"
+          echo "===================================="
+          
+          # Trigger workflow and capture the time
+          trigger_time=$(date -u +%s)
+          
+          gh workflow run test-pipeline.yml \
+            --repo "$GITHUB_REPO" \
+            -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
+            -f version=${{ matrix.version }} \
+            -f fcli_version=${{ github.event.inputs.fcli_version }} \
+            -f product=${{ matrix.product }} \
+            -f component=${{ matrix.component }} \
+            -f source_dir=sources/${{ matrix.source_dir }} \
+            -f os=${{ matrix.os }} \
+            -f fortify_release=${{ steps.fortify-release.outputs.name }} \
+            -f setup_steps="$setup_steps"
+          
+          echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
+          sleep 10
+          
+          # Find the most recent run that started after our trigger
+          run_id=$(gh run list \
+            --repo "$GITHUB_REPO" \
+            --workflow=test-pipeline.yml \
+            --limit=10 \
+            --json databaseId,createdAt,status \
+            --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
+          
+          if [ -z "$run_id" ]; then
+            echo "Error: Could not find triggered workflow run"
+            exit 1
+          fi
+          
+          run_url="https://github.com/$GITHUB_REPO/actions/runs/$run_id"
+          echo "Found workflow run ID: $run_id"
+          echo "Workflow URL: $run_url"
+          echo "Polling for completion (timeout: 30 minutes)..."
+          
+          # Poll for completion
+          timeout=1800  # 30 minutes
+          elapsed=0
+          interval=30
+          test_passed=false
+          
+          while [ $elapsed -lt $timeout ]; do
+            status=$(gh run view $run_id --repo "$GITHUB_REPO" --json status,conclusion --jq '.status + ":" + .conclusion')
+            run_status=$(echo $status | cut -d: -f1)
+            run_conclusion=$(echo $status | cut -d: -f2)
             
-            # Get the PAT value using variable indirection and export for gh CLI
-            GH_TOKEN="${!PAT_SECRET}"
-            export GH_TOKEN
+            echo "[$elapsed s] Status: $run_status, Conclusion: $run_conclusion"
             
-            echo "===================================="
-            echo "Triggering GitHub test in repo '$REPO_TAG' ($GITHUB_REPO)"
-            echo "Using PAT secret: $PAT_SECRET"
-            echo "===================================="
-            
-            # Trigger workflow and capture the time
-            trigger_time=$(date -u +%s)
-            
-            gh workflow run test-pipeline.yml \
-              --repo "$GITHUB_REPO" \
-              -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
-              -f version=${{ matrix.version }} \
-              -f fcli_version=${{ github.event.inputs.fcli_version }} \
-              -f product=${{ matrix.product }} \
-              -f component=${{ matrix.component }} \
-              -f source_dir=sources/${{ matrix.source_dir }} \
-              -f os=${{ matrix.os }} \
-              -f fortify_release=${{ steps.fortify-release.outputs.name }} \
-              -f setup_steps="$setup_steps"
-            
-            echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
-            sleep 10
-            
-            # Find the most recent run that started after our trigger
-            run_id=$(gh run list \
-              --repo "$GITHUB_REPO" \
-              --workflow=test-pipeline.yml \
-              --limit=10 \
-              --json databaseId,createdAt,status \
-              --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
-            
-            if [ -z "$run_id" ]; then
-              echo "Error: Could not find triggered workflow run"
-              exit 1
-            fi
-            
-            run_url="https://github.com/$GITHUB_REPO/actions/runs/$run_id"
-            echo "Found workflow run ID: $run_id"
-            echo "Workflow URL: $run_url"
-            echo "Polling for completion (timeout: 30 minutes)..."
-            
-            # Poll for completion
-            timeout=1800  # 30 minutes
-            elapsed=0
-            interval=30
-            test_passed=false
-            
-            while [ $elapsed -lt $timeout ]; do
-              status=$(gh run view $run_id --repo "$GITHUB_REPO" --json status,conclusion --jq '.status + ":" + .conclusion')
-              run_status=$(echo $status | cut -d: -f1)
-              run_conclusion=$(echo $status | cut -d: -f2)
-              
-              echo "[$elapsed s] Status: $run_status, Conclusion: $run_conclusion"
-              
-              if [ "$run_status" = "completed" ]; then
-                if [ "$run_conclusion" = "success" ]; then
-                  echo "✓ Test passed in repo '$REPO_TAG'!"
-                  test_passed=true
-                else
-                  echo "✗ Test failed in repo '$REPO_TAG' with conclusion: $run_conclusion"
-                  gh run view $run_id --repo "$GITHUB_REPO" --log-failed || true
-                  test_passed=false
-                fi
-                break
+            if [ "$run_status" = "completed" ]; then
+              if [ "$run_conclusion" = "success" ]; then
+                echo "✓ Test passed in repo '$REPO_TAG'!"
+                test_passed=true
+              else
+                echo "✗ Test failed in repo '$REPO_TAG' with conclusion: $run_conclusion"
+                gh run view $run_id --repo "$GITHUB_REPO" --log-failed || true
+                test_passed=false
               fi
-              
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            
-            if [ $elapsed -ge $timeout ]; then
-              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-              test_passed=false
+              break
             fi
             
-            # Create artifact for this repo
-            mkdir -p pipeline-info
-            jq -n \
-              --arg platform "github" \
-              --arg repo_tag "$REPO_TAG" \
-              --arg version "${{ matrix.version }}" \
-              --arg component "${{ matrix.component }}" \
-              --arg product "${{ matrix.product }}" \
-              --arg source_dir "${{ matrix.source_dir }}" \
-              --arg os "${{ matrix.os }}" \
-              --arg pipeline_url "$run_url" \
-              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-              > "pipeline-info/github-${REPO_TAG}-${repo_index}.json"
-            
-            repo_index=$((repo_index + 1))
+            sleep $interval
+            elapsed=$((elapsed + interval))
           done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            test_passed=false
+          fi
+          
+          # Create artifact
+          mkdir -p pipeline-info
+          jq -n \
+            --arg platform "github" \
+            --arg repo_tag "$REPO_TAG" \
+            --arg version "${{ matrix.version }}" \
+            --arg component "${{ matrix.component }}" \
+            --arg product "${{ matrix.product }}" \
+            --arg source_dir "${{ matrix.source_dir }}" \
+            --arg os "${{ matrix.os }}" \
+            --arg pipeline_url "$run_url" \
+            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+            > "pipeline-info/result.json"
       
       - name: Trigger GitLab test
         id: gitlab-trigger
@@ -664,108 +666,104 @@ jobs:
         run: |
           set -e
           
-          # Loop through all GitLab repos
-          repo_index=0
-          for repo in $(jq -c '.repos[]' "ci/gitlab/config.json"); do
-            REPO_TAG=$(echo "$repo" | jq -r '.tag')
-            GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
-            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
-            TRIGGER_SECRET=$(echo "$repo" | jq -r '.trigger_secret')
-            GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          # Get repo info from matrix
+          REPO_TAG="${{ matrix.repo_tag }}"
+          repo=$(jq -c ".repos[] | select(.tag == \"$REPO_TAG\")" "ci/gitlab/config.json")
+          GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
+          PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
+          TRIGGER_SECRET=$(echo "$repo" | jq -r '.trigger_secret')
+          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+          
+          # Get the PAT and trigger token values using variable indirection
+          GITLAB_TOKEN="${!PAT_SECRET}"
+          GITLAB_TRIGGER_TOKEN="${!TRIGGER_SECRET}"
+          
+          echo "===================================="
+          echo "Triggering GitLab pipeline in repo '$REPO_TAG'"
+          echo "Using PAT secret: $PAT_SECRET"
+          echo "Using trigger secret: $TRIGGER_SECRET"
+          echo "===================================="
+          
+          echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
+          pipeline_response=$(curl -f -X POST \
+            "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
+            -F "token=$GITLAB_TRIGGER_TOKEN" \
+            -F "ref=main" \
+            -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
+            -F "variables[VERSION]=${{ matrix.version }}" \
+            -F "variables[FCLI_VERSION]=${{ github.event.inputs.fcli_version }}" \
+            -F "variables[PRODUCT]=${{ matrix.product }}" \
+            -F "variables[COMPONENT]=${{ matrix.component }}" \
+            -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
+            -F "variables[OS]=${{ matrix.os }}" \
+            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
+            -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
+          
+          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+          pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
+          echo "Pipeline ID: $pipeline_id"
+          echo "Pipeline URL: $pipeline_url"
+          
+          echo "Polling for completion (timeout: 30 minutes)..."
+          timeout=1800
+          elapsed=0
+          interval=30
+          test_passed=false
+          
+          while [ $elapsed -lt $timeout ]; do
+            pipeline_status=$(curl -f -s \
+              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
+              -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
             
-            # Get the PAT and trigger token values using variable indirection
-            GITLAB_TOKEN="${!PAT_SECRET}"
-            GITLAB_TRIGGER_TOKEN="${!TRIGGER_SECRET}"
+            echo "[$elapsed s] Status: $pipeline_status"
             
-            echo "===================================="
-            echo "Triggering GitLab pipeline in repo '$REPO_TAG'"
-            echo "Using PAT secret: $PAT_SECRET"
-            echo "Using trigger secret: $TRIGGER_SECRET"
-            echo "===================================="
+            case "$pipeline_status" in
+              success)
+                echo "✓ Test passed in repo '$REPO_TAG'!"
+                test_passed=true
+                break
+                ;;
+              failed|canceled|skipped)
+                echo "✗ Test failed in repo '$REPO_TAG' with status: $pipeline_status"
+                curl -f -s \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}' || true
+                test_passed=false
+                break
+                ;;
+              running|pending|created|waiting_for_resource|preparing)
+                # Continue polling
+                ;;
+              *)
+                echo "Unknown status: $pipeline_status"
+                test_passed=false
+                break
+                ;;
+            esac
             
-            echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
-            pipeline_response=$(curl -f -X POST \
-              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
-              -F "token=$GITLAB_TRIGGER_TOKEN" \
-              -F "ref=main" \
-              -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
-              -F "variables[VERSION]=${{ matrix.version }}" \
-              -F "variables[FCLI_VERSION]=${{ github.event.inputs.fcli_version }}" \
-              -F "variables[PRODUCT]=${{ matrix.product }}" \
-              -F "variables[COMPONENT]=${{ matrix.component }}" \
-              -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
-              -F "variables[OS]=${{ matrix.os }}" \
-              -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
-              -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
-            
-            pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
-            pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
-            echo "Pipeline ID: $pipeline_id"
-            echo "Pipeline URL: $pipeline_url"
-            
-            echo "Polling for completion (timeout: 30 minutes)..."
-            timeout=1800
-            elapsed=0
-            interval=30
-            test_passed=false
-            
-            while [ $elapsed -lt $timeout ]; do
-              pipeline_status=$(curl -f -s \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
-              
-              echo "[$elapsed s] Status: $pipeline_status"
-              
-              case "$pipeline_status" in
-                success)
-                  echo "✓ Test passed in repo '$REPO_TAG'!"
-                  test_passed=true
-                  break
-                  ;;
-                failed|canceled|skipped)
-                  echo "✗ Test failed in repo '$REPO_TAG' with status: $pipeline_status"
-                  curl -f -s \
-                    "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
-                    -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}' || true
-                  test_passed=false
-                  break
-                  ;;
-                running|pending|created|waiting_for_resource|preparing)
-                  # Continue polling
-                  ;;
-                *)
-                  echo "Unknown status: $pipeline_status"
-                  test_passed=false
-                  break
-                  ;;
-              esac
-              
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            
-            if [ $elapsed -ge $timeout ]; then
-              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-              test_passed=false
-            fi
-            
-            # Create artifact for this repo
-            mkdir -p pipeline-info
-            jq -n \
-              --arg platform "gitlab" \
-              --arg repo_tag "$REPO_TAG" \
-              --arg version "${{ matrix.version }}" \
-              --arg component "${{ matrix.component }}" \
-              --arg product "${{ matrix.product }}" \
-              --arg source_dir "${{ matrix.source_dir }}" \
-              --arg os "${{ matrix.os }}" \
-              --arg pipeline_url "$pipeline_url" \
-              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-              > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json"
-            
-            repo_index=$((repo_index + 1))
+            sleep $interval
+            elapsed=$((elapsed + interval))
           done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            test_passed=false
+          fi
+          
+          # Create artifact
+          mkdir -p pipeline-info
+          jq -n \
+            --arg platform "gitlab" \
+            --arg repo_tag "$REPO_TAG" \
+            --arg version "${{ matrix.version }}" \
+            --arg component "${{ matrix.component }}" \
+            --arg product "${{ matrix.product }}" \
+            --arg source_dir "${{ matrix.source_dir }}" \
+            --arg os "${{ matrix.os }}" \
+            --arg pipeline_url "$pipeline_url" \
+            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+            > "pipeline-info/result.json"
       
       - name: Trigger ADO test
         id: ado-trigger
@@ -776,170 +774,176 @@ jobs:
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
           
-          # Loop through all ADO repos
-          repo_index=0
-          for repo in $(jq -c '.repos[]' "ci/ado/config.json"); do
-            REPO_TAG=$(echo "$repo" | jq -r '.tag')
-            ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
-            PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
-            ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
-            ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
-            ADO_REPO=$(echo "$ADO_REPO_URL" | sed 's|.*/||')
-            
-            # Get the PAT value using variable indirection
-            ADO_PAT="${!PAT_SECRET}"
-            
-            echo "===================================="
-            echo "Triggering Azure DevOps pipeline in repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)"
-            echo "Using PAT secret: $PAT_SECRET"
-            echo "===================================="
-            
-            # Create auth header
-            AUTH_HEADER="Authorization: Basic $(printf ":%s" "${{ secrets.ADO_PAT }}" | base64 -w 0)"
-            
-            # Find the pipeline ID by querying for pipelines with path azure-pipelines.yml
-            echo "Looking up pipeline ID..."
-            pipelines_response=$(curl -s \
-              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines?api-version=7.1-preview.1" \
+          # Get repo info from matrix
+          REPO_TAG="${{ matrix.repo_tag }}"
+          repo=$(jq -c ".repos[] | select(.tag == \"$REPO_TAG\")" "ci/ado/config.json")
+          ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
+          PAT_SECRET=$(echo "$repo" | jq -r '.pat_secret')
+          ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
+          ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
+          ADO_REPO=$(echo "$ADO_REPO_URL" | sed 's|.*/||')
+          
+          # Get the PAT value using variable indirection
+          ADO_PAT="${!PAT_SECRET}"
+          
+          echo "===================================="
+          echo "Triggering Azure DevOps pipeline in repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)"
+          echo "Using PAT secret: $PAT_SECRET"
+          echo "===================================="
+          
+          # Create auth header
+          AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
+          
+          # Find the pipeline ID by querying for pipelines with path azure-pipelines.yml
+          echo "Looking up pipeline ID..."
+          pipelines_response=$(curl -s \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines?api-version=7.1-preview.1" \
+            -H "$AUTH_HEADER")
+          
+          pipeline_id=$(echo "$pipelines_response" | jq -r '.value[] | select(.folder == "\\ci\\ado" or .folder == "/ci/ado" or (.configuration.path // "" | contains("azure-pipelines.yml"))) | .id' | head -n1)
+          
+          # If not found by folder/path, try finding by name or just get the first pipeline
+          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+            echo "Pipeline not found by path, trying first available pipeline..."
+            pipeline_id=$(echo "$pipelines_response" | jq -r '.value[0].id')
+          fi
+          
+          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+            echo "Error: Could not find pipeline ID"
+            echo "Available pipelines:"
+            echo "$pipelines_response" | jq '.value[] | {id, name, folder, path: .configuration.path}'
+            exit 1
+          fi
+          
+          echo "Using pipeline ID: $pipeline_id"
+          
+          # Debug: Show what we're about to send
+          echo "=== Pipeline Trigger Parameters ==="
+          echo "PIPELINE_NAME: ${{ steps.pipeline-name.outputs.name }}"
+          echo "VERSION: ${{ matrix.version }}"
+          echo "FCLI_VERSION: ${{ github.event.inputs.fcli_version }}"
+          echo "PRODUCT: ${{ matrix.product }}"
+          echo "COMPONENT: ${{ matrix.component }}"
+          echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
+          echo "OS: ${{ matrix.os }}"
+          echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
+          echo "SETUP_TASKS length: $(echo "$ado_setup_tasks" | jq 'length')"
+          echo "===================================="
+          
+          build_response=$(curl -s -X POST \
+            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/$pipeline_id/runs?api-version=7.1-preview.1" \
+            -H "$AUTH_HEADER" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"resources\": {
+                \"repositories\": {
+                  \"self\": {
+                    \"refName\": \"refs/heads/main\"
+                  }
+                }
+              },
+              \"templateParameters\": {
+                \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
+                \"VERSION\": \"${{ matrix.version }}\",
+                \"FCLI_VERSION\": \"${{ github.event.inputs.fcli_version }}\",
+                \"PRODUCT\": \"${{ matrix.product }}\",
+                \"COMPONENT\": \"${{ matrix.component }}\",
+                \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
+                \"OS\": \"${{ matrix.os }}\",
+                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
+                \"SETUP_TASKS\": $ado_setup_tasks
+              }
+            }")
+          
+          # Check if response is valid JSON
+          if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
+            echo "Error: API returned invalid JSON response:"
+            echo "$build_response"
+            exit 1
+          fi
+          
+          build_id=$(echo "$build_response" | jq -r '.id')
+          if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then
+            echo "Error: Failed to get build ID from response:"
+            echo "$build_response" | jq .
+            exit 1
+          fi
+          
+          build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
+          echo "Build ID: $build_id"
+          echo "Build URL: $build_url"
+          
+          echo "Polling for completion (timeout: 30 minutes)..."
+          timeout=1800
+          elapsed=0
+          interval=30
+          test_passed=false
+          
+          while [ $elapsed -lt $timeout ]; do
+            build_info=$(curl -s \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
               -H "$AUTH_HEADER")
             
-            pipeline_id=$(echo "$pipelines_response" | jq -r '.value[] | select(.folder == "\\ci\\ado" or .folder == "/ci/ado" or (.configuration.path // "" | contains("azure-pipelines.yml"))) | .id' | head -n1)
+            build_status=$(echo "$build_info" | jq -r '.status')
+            build_result=$(echo "$build_info" | jq -r '.result')
             
-            # If not found by folder/path, try finding by name or just get the first pipeline
-            if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
-              echo "Pipeline not found by path, trying first available pipeline..."
-              pipeline_id=$(echo "$pipelines_response" | jq -r '.value[0].id')
-            fi
+            echo "[$elapsed s] Status: $build_status, Result: $build_result"
             
-            if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
-              echo "Error: Could not find pipeline ID"
-              echo "Available pipelines:"
-              echo "$pipelines_response" | jq '.value[] | {id, name, folder, path: .configuration.path}'
-              exit 1
-            fi
-            
-            echo "Using pipeline ID: $pipeline_id"
-            
-            # Debug: Show what we're about to send
-            echo "=== Pipeline Trigger Parameters ==="
-            echo "PIPELINE_NAME: ${{ steps.pipeline-name.outputs.name }}"
-            echo "VERSION: ${{ matrix.version }}"
-            echo "FCLI_VERSION: ${{ github.event.inputs.fcli_version }}"
-            echo "PRODUCT: ${{ matrix.product }}"
-            echo "COMPONENT: ${{ matrix.component }}"
-            echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
-            echo "OS: ${{ matrix.os }}"
-            echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
-            echo "SETUP_TASKS length: $(echo "$ado_setup_tasks" | jq 'length')"
-            echo "===================================="
-            
-            build_response=$(curl -s -X POST \
-              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/$pipeline_id/runs?api-version=7.1-preview.1" \
-              -H "$AUTH_HEADER" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"resources\": {
-                  \"repositories\": {
-                    \"self\": {
-                      \"refName\": \"refs/heads/main\"
-                    }
-                  }
-                },
-                \"templateParameters\": {
-                  \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
-                  \"VERSION\": \"${{ matrix.version }}\",
-                  \"FCLI_VERSION\": \"${{ github.event.inputs.fcli_version }}\",
-                  \"PRODUCT\": \"${{ matrix.product }}\",
-                  \"COMPONENT\": \"${{ matrix.component }}\",
-                  \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
-                  \"OS\": \"${{ matrix.os }}\",
-                  \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
-                  \"SETUP_TASKS\": $ado_setup_tasks
-                }
-              }")
-            
-            # Check if response is valid JSON
-            if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
-              echo "Error: API returned invalid JSON response:"
-              echo "$build_response"
-              exit 1
-            fi
-            
-            build_id=$(echo "$build_response" | jq -r '.id')
-            if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then
-              echo "Error: Failed to get build ID from response:"
-              echo "$build_response" | jq .
-              exit 1
-            fi
-            
-            build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
-            echo "Build ID: $build_id"
-            echo "Build URL: $build_url"
-            
-            echo "Polling for completion (timeout: 30 minutes)..."
-            timeout=1800
-            elapsed=0
-            interval=30
-            test_passed=false
-            
-            while [ $elapsed -lt $timeout ]; do
-              build_info=$(curl -s \
-                "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
-                -H "$AUTH_HEADER")
-              
-              build_status=$(echo "$build_info" | jq -r '.status')
-              build_result=$(echo "$build_info" | jq -r '.result')
-              
-              echo "[$elapsed s] Status: $build_status, Result: $build_result"
-              
-              if [ "$build_status" = "completed" ]; then
-                if [ "$build_result" = "succeeded" ]; then
-                  echo "✓ Test passed in repo '$REPO_TAG'!"
-                  test_passed=true
-                else
-                  echo "✗ Test failed in repo '$REPO_TAG' with result: $build_result"
-                  # Get failed job logs
-                  curl -s \
-                    "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
-                    -H "$AUTH_HEADER" | \
-                    jq '.records[] | select(.result == "failed") | {name, type, result}' || true
-                  test_passed=false
-                fi
-                break
+            if [ "$build_status" = "completed" ]; then
+              if [ "$build_result" = "succeeded" ]; then
+                echo "✓ Test passed in repo '$REPO_TAG'!"
+                test_passed=true
+              else
+                echo "✗ Test failed in repo '$REPO_TAG' with result: $build_result"
+                # Get failed job logs
+                curl -s \
+                  "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
+                  -H "$AUTH_HEADER" | \
+                  jq '.records[] | select(.result == "failed") | {name, type, result}' || true
+                test_passed=false
               fi
-              
-              sleep $interval
-              elapsed=$((elapsed + interval))
-            done
-            
-            if [ $elapsed -ge $timeout ]; then
-              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-              test_passed=false
+              break
             fi
             
-            # Create artifact for this repo
-            mkdir -p pipeline-info
-            jq -n \
-              --arg platform "ado" \
-              --arg repo_tag "$REPO_TAG" \
-              --arg version "${{ matrix.version }}" \
-              --arg component "${{ matrix.component }}" \
-              --arg product "${{ matrix.product }}" \
-              --arg source_dir "${{ matrix.source_dir }}" \
-              --arg os "${{ matrix.os }}" \
-              --arg pipeline_url "$build_url" \
-              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-              > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json"
-            
-            repo_index=$((repo_index + 1))
+            sleep $interval
+            elapsed=$((elapsed + interval))
           done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            test_passed=false
+          fi
+          
+          # Create artifact
+          mkdir -p pipeline-info
+          jq -n \
+            --arg platform "ado" \
+            --arg repo_tag "$REPO_TAG" \
+            --arg version "${{ matrix.version }}" \
+            --arg component "${{ matrix.component }}" \
+            --arg product "${{ matrix.product }}" \
+            --arg source_dir "${{ matrix.source_dir }}" \
+            --arg os "${{ matrix.os }}" \
+            --arg pipeline_url "$build_url" \
+            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+            > "pipeline-info/result.json"
+      
+      - name: Generate artifact name
+        id: artifact-name
+        if: always()
+        run: |
+          # Sanitize artifact name by replacing invalid characters
+          artifact_name="pipeline-info-${{ matrix.platform }}-${{ matrix.repo_tag }}-${{ matrix.version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}"
+          # Replace invalid characters: / : < > | * ? \ " with -
+          artifact_name=$(echo "$artifact_name" | sed 's/[\/:<>|*?\\"'\'']/-/g')
+          echo "name=$artifact_name" >> $GITHUB_OUTPUT
       
       - name: Upload pipeline info
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-info-${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
+          name: ${{ steps.artifact-name.outputs.name }}
           path: pipeline-info/
           retention-days: 1
 
