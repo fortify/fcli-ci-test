@@ -503,7 +503,7 @@ jobs:
           done
 
   test:
-    name: Test fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.ci_system }} / ${{ matrix.repo_tag }} / ${{ matrix.product }} / ${{ matrix.component }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
+    name: Test ${{ matrix.ci_system }} / ${{ matrix.repo_tag }} / ${{ matrix.component }} / ${{ matrix.product }} / fcli ${{ github.event.inputs.fcli_version }} / ${{ matrix.source_dir }} / ${{ matrix.os }}
     needs: [prepare-matrix, sync-external-repos]
     runs-on: ubuntu-latest
     if: |
