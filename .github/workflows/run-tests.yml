@@ -217,8 +217,8 @@ jobs:
             elif [ "$PLATFORM" = "ado" ]; then
               AUTH_URL="https://anything:$ADO_PAT@${REPO_URL#https://}"
             else
-              # GitHub - use GITHUB_TOKEN
-              AUTH_URL="https://x-access-token:$GITHUB_TOKEN@${REPO_URL#https://}"
+              # GitHub - use GH_PAT for cross-repo access
+              AUTH_URL="https://x-access-token:$GH_PAT@${REPO_URL#https://}"
             fi
             
             # Clone repo to temp directory
@@ -262,7 +262,7 @@ jobs:
             echo "✓ Repository '$REPO_TAG' synced successfully"
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           ADO_PAT: ${{ secrets.ADO_PAT }}
       
@@ -482,7 +482,7 @@ jobs:
             echo "✓ GitHub secrets and variables synced to '$REPO_TAG' successfully"
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
           FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
@@ -639,7 +639,7 @@ jobs:
             repo_index=$((repo_index + 1))
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
       
       - name: Trigger GitLab test
         id: gitlab-trigger
