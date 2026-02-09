@@ -659,6 +659,12 @@ jobs:
             --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
             '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
             > "pipeline-info/result.json"
+          
+          # Fail the job if test failed
+          if [ "$test_passed" != "true" ]; then
+            echo "ERROR: Test failed"
+            exit 1
+          fi
       
       - name: Trigger GitLab test
         id: gitlab-trigger
@@ -678,14 +684,25 @@ jobs:
           GITLAB_TOKEN="${!PAT_SECRET}"
           GITLAB_TRIGGER_TOKEN="${!TRIGGER_SECRET}"
           
+          # Validate tokens
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "ERROR: PAT token is empty (secret: $PAT_SECRET)"
+            exit 1
+          fi
+          if [ -z "$GITLAB_TRIGGER_TOKEN" ]; then
+            echo "ERROR: Trigger token is empty (secret: $TRIGGER_SECRET)"
+            exit 1
+          fi
+          
           echo "===================================="
           echo "Triggering GitLab pipeline in repo '$REPO_TAG'"
           echo "Using PAT secret: $PAT_SECRET"
           echo "Using trigger secret: $TRIGGER_SECRET"
+          echo "Project ID: $GITLAB_PROJECT_ID"
           echo "===================================="
           
           echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
-          pipeline_response=$(curl -f -X POST \
+          pipeline_response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
             "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
             -F "token=$GITLAB_TRIGGER_TOKEN" \
             -F "ref=main" \
@@ -699,7 +716,16 @@ jobs:
             -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
             -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
           
-          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+          http_code=$(echo "$pipeline_response" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+          response_body=$(echo "$pipeline_response" | sed 's/HTTP_CODE:[0-9]*$//')
+          
+          if [ "$http_code" != "201" ]; then
+            echo "ERROR: GitLab API returned HTTP $http_code"
+            echo "Response: $response_body"
+            exit 1
+          fi
+          
+          pipeline_id=$(echo "$response_body" | jq -r '.id')
           pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
           echo "Pipeline ID: $pipeline_id"
           echo "Pipeline URL: $pipeline_url"
@@ -764,6 +790,12 @@ jobs:
             --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
             '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
             > "pipeline-info/result.json"
+          
+          # Fail the job if test failed
+          if [ "$test_passed" != "true" ]; then
+            echo "ERROR: Test failed"
+            exit 1
+          fi
       
       - name: Trigger ADO test
         id: ado-trigger
@@ -928,6 +960,12 @@ jobs:
             --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
             '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
             > "pipeline-info/result.json"
+          
+          # Fail the job if test failed
+          if [ "$test_passed" != "true" ]; then
+            echo "ERROR: Test failed"
+            exit 1
+          fi
       
       - name: Generate artifact name
         id: artifact-name
@@ -947,6 +985,52 @@ jobs:
           path: pipeline-info/
           retention-days: 1
 
+
+      - name: Create job summary
+        if: always()
+        run: |
+          echo "## Test Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Read result from artifact
+          if [ -f "pipeline-info/result.json" ]; then
+            platform=$(jq -r '.platform' pipeline-info/result.json)
+            repo_tag=$(jq -r '.repo_tag' pipeline-info/result.json)
+            status=$(jq -r '.status' pipeline-info/result.json)
+            pipeline_url=$(jq -r '.pipeline_url' pipeline-info/result.json)
+            
+            # Format platform name
+            case "$platform" in
+              github) platform_name="GitHub Actions" ;;
+              gitlab) platform_name="GitLab CI/CD" ;;
+              ado) platform_name="Azure DevOps" ;;
+              *) platform_name="$platform" ;;
+            esac
+            
+            # Status icon
+            if [ "$status" = "passed" ]; then
+              status_display="✅ **PASSED**"
+            else
+              status_display="❌ **FAILED**"
+            fi
+            
+            echo "### $status_display" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **CI Platform** | $platform_name |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Repository** | \`$repo_tag\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Version** | \`${{ matrix.version }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **fcli Version** | \`${{ github.event.inputs.fcli_version }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Component** | \`${{ matrix.component }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Product** | \`${{ matrix.product }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Source** | \`${{ matrix.source_dir }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **OS** | \`${{ matrix.os }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 [View Pipeline Results]($pipeline_url)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test results available" >> $GITHUB_STEP_SUMMARY
+          fi
   summary:
     name: Test Summary
     needs: [prepare-matrix, test]
