@@ -1018,19 +1018,11 @@ jobs:
             fi
             
             echo "### $status_display" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| **CI Platform** | $platform_name |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Repository** | \`$repo_tag\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Version** | \`${{ matrix.version }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **fcli Version** | \`${{ github.event.inputs.fcli_version }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Component** | \`${{ matrix.component }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Product** | \`${{ matrix.product }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Source** | \`${{ matrix.source_dir }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **OS** | \`${{ matrix.os }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "🔗 [View Pipeline Results]($pipeline_url)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| CI Platform | Repository | Version | fcli Version | Component | Product | Source | OS |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------------|------------|---------|--------------|-----------|---------|--------|-----|" >> $GITHUB_STEP_SUMMARY
+            echo "| $platform_name | \`$repo_tag\` | \`${{ matrix.version }}\` | \`${{ github.event.inputs.fcli_version }}\` | \`${{ matrix.component }}\` | \`${{ matrix.product }}\` | \`${{ matrix.source_dir }}\` | \`${{ matrix.os }}\` |" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ No test results available" >> $GITHUB_STEP_SUMMARY
           fi
