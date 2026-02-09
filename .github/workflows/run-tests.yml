@@ -622,19 +622,19 @@ jobs:
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/github-${REPO_TAG}-${repo_index}.json" <<EOF
-{
-  "platform": "github",
-  "repo_tag": "$REPO_TAG",
-  "version": "${{ matrix.version }}",
-  "component": "${{ matrix.component }}",
-  "product": "${{ matrix.product }}",
-  "source_dir": "${{ matrix.source_dir }}",
-  "os": "${{ matrix.os }}",
-  "pipeline_url": "$run_url",
-  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-}
-EOF
+            cat > "pipeline-info/github-${REPO_TAG}-${repo_index}.json" <<'EOF'
+            {
+              "platform": "github",
+              "repo_tag": "$REPO_TAG",
+              "version": "${{ matrix.version }}",
+              "component": "${{ matrix.component }}",
+              "product": "${{ matrix.product }}",
+              "source_dir": "${{ matrix.source_dir }}",
+              "os": "${{ matrix.os }}",
+              "pipeline_url": "$run_url",
+              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+            }
+            EOF
             
             repo_index=$((repo_index + 1))
           done
@@ -726,19 +726,19 @@ EOF
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json" <<EOF
-{
-  "platform": "gitlab",
-  "repo_tag": "$REPO_TAG",
-  "version": "${{ matrix.version }}",
-  "component": "${{ matrix.component }}",
-  "product": "${{ matrix.product }}",
-  "source_dir": "${{ matrix.source_dir }}",
-  "os": "${{ matrix.os }}",
-  "pipeline_url": "$pipeline_url",
-  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-}
-EOF
+            cat > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json" <<'EOF'
+            {
+              "platform": "gitlab",
+              "repo_tag": "$REPO_TAG",
+              "version": "${{ matrix.version }}",
+              "component": "${{ matrix.component }}",
+              "product": "${{ matrix.product }}",
+              "source_dir": "${{ matrix.source_dir }}",
+              "os": "${{ matrix.os }}",
+              "pipeline_url": "$pipeline_url",
+              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+            }
+            EOF
             
             repo_index=$((repo_index + 1))
           done
@@ -893,19 +893,19 @@ EOF
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json" <<EOF
-{
-  "platform": "ado",
-  "repo_tag": "$REPO_TAG",
-  "version": "${{ matrix.version }}",
-  "component": "${{ matrix.component }}",
-  "product": "${{ matrix.product }}",
-  "source_dir": "${{ matrix.source_dir }}",
-  "os": "${{ matrix.os }}",
-  "pipeline_url": "$build_url",
-  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-}
-EOF
+            cat > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json" <<'EOF'
+            {
+              "platform": "ado",
+              "repo_tag": "$REPO_TAG",
+              "version": "${{ matrix.version }}",
+              "component": "${{ matrix.component }}",
+              "product": "${{ matrix.product }}",
+              "source_dir": "${{ matrix.source_dir }}",
+              "os": "${{ matrix.os }}",
+              "pipeline_url": "$build_url",
+              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+            }
+            EOF
             
             repo_index=$((repo_index + 1))
           done
@@ -949,9 +949,7 @@ EOF
             
             # Create table header
             echo "| CI System | Repo | Version | Component | Product | Source | OS | Status |" >> $GITHUB_STEP_SUMMARY
-            echo "|-----------|------|---------|-----------|---------|--------|----|---------
-
-|" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|------|---------|-----------|---------|--------|----|---------|" >> $GITHUB_STEP_SUMMARY
             
             # Count pass/fail
             pass_count=0
