@@ -1,5 +1,14 @@
 {
-  "repoUrl": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test",
+  "repos": [
+    {
+      "tag": "public",
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-public"
+    },
+    {
+      "tag": "private",
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-private"
+    }
+  ],
   "supportedOs": ["linux", "windows", "mac"],
   "variableNames": [
     "FCLI_FT_FOD_URL",

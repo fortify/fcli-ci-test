@@ -32,6 +32,10 @@ concurrency:
   group: fcli-ci-tests-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write      # For syncing files to remote repos
+  actions: write       # For triggering workflows in remote repos
+
 jobs:
   prepare-matrix:
     name: Prepare Test Matrix
@@ -174,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [gitlab, ado]
+        platform: [github, gitlab, ado]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -196,58 +200,69 @@ jobs:
           
           # Read platform config
           PLATFORM="${{ matrix.platform }}"
-          REPO_URL=$(jq -r '.repoUrl' "ci/$PLATFORM/config.json")
-          PIPELINE_FILE=$([ "$PLATFORM" = "gitlab" ] && echo ".gitlab-ci.yml" || echo "azure-pipelines.yml")
           
-          echo "Syncing $PLATFORM repository: $REPO_URL"
-          
-          # Set up authentication based on platform
-          if [ "$PLATFORM" = "gitlab" ]; then
-            AUTH_URL="https://oauth2:$GITLAB_TOKEN@${REPO_URL#https://}"
-          else
-            AUTH_URL="https://anything:$ADO_PAT@${REPO_URL#https://}"
-          fi
-          
-          # Clone repo to temp directory
-          temp_dir=$(mktemp -d)
-          git clone "$AUTH_URL" "$temp_dir"
-          cd "$temp_dir"
-          
-          # Check if main branch exists
-          echo "Checking for pipeline or source changes..."
-          if git ls-remote --heads origin main | grep -q main; then
-            git fetch origin main
-          else
-            echo "Repository is empty or main branch doesn't exist yet"
-            git checkout -b main
-          fi
-          
-          # Copy all CI files for this platform to root
-          echo "Syncing ci/$PLATFORM files to root..."
-          cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/"* .
-          cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/".* . 2>/dev/null || true
-          
-          # Copy sources
-          rm -rf sources
-          cp -r "$GITHUB_WORKSPACE/sources" .
-          
-          # Check if anything changed (new files or modified files)
-          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            echo "Changes detected, pushing to $PLATFORM..."
-            git config user.name "fcli-ci-test"
-            git config user.email "fcli-ci-test@fortify.github.io"
-            git add .
-            git commit -m "CI Test Run ${{ github.run_id }} - Sync from fcli-ci-test@${{ github.sha }}"
-            git push --force origin HEAD:main
-          else
-            echo "No changes detected, skipping git push"
-          fi
-          
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$temp_dir"
-          
-          echo "✓ Repository synced successfully"
+          # Loop through all repos for this platform
+          for repo in $(jq -c '.repos[]' "ci/$PLATFORM/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            REPO_URL=$(echo "$repo" | jq -r '.url')
+            PIPELINE_FILE=$([ "$PLATFORM" = "gitlab" ] && echo ".gitlab-ci.yml" || echo "azure-pipelines.yml")
+            
+            echo "===================================="
+            echo "Syncing $PLATFORM repository '$REPO_TAG': $REPO_URL"
+            echo "===================================="
+            
+            # Set up authentication based on platform
+            if [ "$PLATFORM" = "gitlab" ]; then
+              AUTH_URL="https://oauth2:$GITLAB_TOKEN@${REPO_URL#https://}"
+            elif [ "$PLATFORM" = "ado" ]; then
+              AUTH_URL="https://anything:$ADO_PAT@${REPO_URL#https://}"
+            else
+              # GitHub - use GITHUB_TOKEN
+              AUTH_URL="https://x-access-token:$GITHUB_TOKEN@${REPO_URL#https://}"
+            fi
+            
+            # Clone repo to temp directory
+            temp_dir=$(mktemp -d)
+            git clone "$AUTH_URL" "$temp_dir"
+            cd "$temp_dir"
+            
+            # Check if main branch exists
+            echo "Checking for pipeline or source changes..."
+            if git ls-remote --heads origin main | grep -q main; then
+              git fetch origin main
+            else
+              echo "Repository is empty or main branch doesn't exist yet"
+              git checkout -b main
+            fi
+            
+            # Copy all CI files for this platform to root
+            echo "Syncing ci/$PLATFORM files to root..."
+            cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/"* .
+            cp -r "$GITHUB_WORKSPACE/ci/$PLATFORM/".* . 2>/dev/null || true
+            
+            # Copy sources
+            rm -rf sources
+            cp -r "$GITHUB_WORKSPACE/sources" .
+            
+            # Check if anything changed (new files or modified files)
+            if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+              echo "Changes detected, pushing to $PLATFORM '$REPO_TAG'..."
+              git config user.name "fcli-ci-test-runner"
+              git config user.email "fcli-ci-test-runner@fortify.github.io"
+              git add .
+              git commit -m "CI Test Run ${{ github.run_id }} - Sync from fcli-ci-test-runner@${{ github.sha }}"
+              git push --force origin HEAD:main
+            else
+              echo "No changes detected, skipping git push"
+            fi
+            
+            cd "$GITHUB_WORKSPACE"
+            rm -rf "$temp_dir"
+            
+            echo "✓ Repository '$REPO_TAG' synced successfully"
+          done
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           ADO_PAT: ${{ secrets.ADO_PAT }}
       
@@ -256,56 +271,62 @@ jobs:
         run: |
           set -e
           
-          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
-          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
-          
-          echo "Syncing variables to GitLab CI/CD variables..."
-          # Sync regular variables (non-masked)
-          for var_name in $(jq -r '.variableNames[]' ci/gitlab/config.json); do
-            var_value="${!var_name}"
-            if [ -n "$var_value" ]; then
-              echo "Updating variable: $var_name"
-              curl -s -X DELETE \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$var_name" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
-              
-              curl -f -X POST \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"key\": \"$var_name\",
-                  \"value\": \"$var_value\",
-                  \"masked\": false,
-                  \"protected\": false
-                }"
-            fi
+          # Loop through all repos for GitLab
+          for repo in $(jq -c '.repos[]' "ci/gitlab/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
+            
+            echo "===================================="
+            echo "Syncing variables/secrets to GitLab repo '$REPO_TAG'..."
+            echo "===================================="
+            
+            # Sync regular variables (non-masked)
+            for var_name in $(jq -r '.variableNames[]' ci/gitlab/config.json); do
+              var_value="${!var_name}"
+              if [ -n "$var_value" ]; then
+                echo "Updating variable: $var_name"
+                curl -s -X DELETE \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$var_name" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+                
+                curl -f -X POST \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -d "{
+                    \"key\": \"$var_name\",
+                    \"value\": \"$var_value\",
+                    \"masked\": false,
+                    \"protected\": false
+                  }"
+              fi
+            done
+            
+            # Sync secrets (masked)
+            for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
+              secret_value="${!secret_name}"
+              if [ -n "$secret_value" ]; then
+                echo "Updating secret: $secret_name"
+                curl -s -X DELETE \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
+                
+                curl -f -X POST \
+                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
+                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -d "{
+                    \"key\": \"$secret_name\",
+                    \"value\": \"$secret_value\",
+                    \"masked\": true,
+                    \"protected\": false
+                  }"
+              fi
+            done
+            
+            echo "✓ GitLab secrets and variables synced to '$REPO_TAG' successfully"
           done
-          
-          echo "Syncing secrets to GitLab CI/CD variables..."
-          # Sync secrets (masked)
-          for secret_name in $(jq -r '.secretNames[]' ci/gitlab/config.json); do
-            secret_value="${!secret_name}"
-            if [ -n "$secret_value" ]; then
-              echo "Updating variable: $secret_name"
-              curl -s -X DELETE \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables/$secret_name" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" 2>/dev/null || true
-              
-              curl -f -X POST \
-                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/variables" \
-                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"key\": \"$secret_name\",
-                  \"value\": \"$secret_value\",
-                  \"masked\": true,
-                  \"protected\": false
-                }"
-            fi
-          done
-          
-          echo "✓ GitLab secrets and variables synced successfully"
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
@@ -320,97 +341,152 @@ jobs:
         run: |
           set -e
           
-          # Parse ADO org and project from config
-          ADO_REPO_URL=$(jq -r '.repoUrl' ci/ado/config.json)
-          ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
-          ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
-          
-          echo "Syncing secrets to Azure DevOps Variable Group ($ADO_ORG/$ADO_PROJ)..."
-          
-          # Create auth header
-          AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
-          
-          # Get existing variable group
-          echo "Fetching fcli-ci-test variable group..."
-          vg_response=$(curl -s \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
-            -H "$AUTH_HEADER")
-          
-          vg_id=$(echo "$vg_response" | jq -r '.value[] | select(.name == "fcli-ci-test") | .id')
-          
-          if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
-            echo "Error: Variable group 'fcli-ci-test' not found. Please create it manually in Azure DevOps."
-            exit 1
-          fi
-          
-          echo "Found variable group ID: $vg_id"
-          
-          # Get full variable group details to preserve project references
-          vg_details=$(curl -s \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
-            -H "$AUTH_HEADER")
-          
-          # Extract existing project references
-          project_refs=$(echo "$vg_details" | jq -c '.variableGroupProjectReferences // []')
-          
-          # Build variables JSON
-          variables_json='{'
-          first=true
-          
-          # Add regular variables (URLs)
-          for var_name in $(jq -r '.variableNames[]' ci/ado/config.json); do
-            var_value="${!var_name}"
-            if [ -n "$var_value" ]; then
-              if [ "$first" = false ]; then
-                variables_json="$variables_json,"
-              fi
-              variables_json="$variables_json\"$var_name\":{\"value\":\"$var_value\",\"isSecret\":false}"
-              first=false
+          # Loop through all repos for ADO
+          for repo in $(jq -c '.repos[]' "ci/ado/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
+            ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
+            ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
+            
+            echo "===================================="
+            echo "Syncing secrets to Azure DevOps repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)..."
+            echo "===================================="
+            
+            # Create auth header
+            AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
+            
+            # Variable group name based on repo tag
+            VG_NAME="fcli-ci-test-$REPO_TAG"
+            
+            # Get existing variable group
+            echo "Fetching $VG_NAME variable group..."
+            vg_response=$(curl -s \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups?api-version=7.1-preview.2" \
+              -H "$AUTH_HEADER")
+            
+            vg_id=$(echo "$vg_response" | jq -r ".value[] | select(.name == \"$VG_NAME\") | .id")
+            
+            if [ -z "$vg_id" ] || [ "$vg_id" = "null" ]; then
+              echo "Error: Variable group '$VG_NAME' not found. Please create it manually in Azure DevOps."
+              exit 1
             fi
-          done
-          
-          # Add secrets
-          for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
-            secret_value="${!secret_name}"
-            if [ -n "$secret_value" ]; then
-              if [ "$first" = false ]; then
-                variables_json="$variables_json,"
+            
+            echo "Found variable group ID: $vg_id"
+            
+            # Get full variable group details to preserve project references
+            vg_details=$(curl -s \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
+              -H "$AUTH_HEADER")
+            
+            # Extract existing project references
+            project_refs=$(echo "$vg_details" | jq -c '.variableGroupProjectReferences // []')
+            
+            # Build variables JSON
+            variables_json='{'
+            first=true
+            
+            # Add regular variables (URLs)
+            for var_name in $(jq -r '.variableNames[]' ci/ado/config.json); do
+              var_value="${!var_name}"
+              if [ -n "$var_value" ]; then
+                if [ "$first" = false ]; then
+                  variables_json="$variables_json,"
+                fi
+                variables_json="$variables_json\"$var_name\":{\"value\":\"$var_value\",\"isSecret\":false}"
+                first=false
               fi
-              variables_json="$variables_json\"$secret_name\":{\"value\":\"$secret_value\",\"isSecret\":true}"
-              first=false
+            done
+            
+            # Add secrets
+            for secret_name in $(jq -r '.secretNames[]' ci/ado/config.json); do
+              secret_value="${!secret_name}"
+              if [ -n "$secret_value" ]; then
+                if [ "$first" = false ]; then
+                  variables_json="$variables_json,"
+                fi
+                variables_json="$variables_json\"$secret_name\":{\"value\":\"$secret_value\",\"isSecret\":true}"
+                first=false
+              fi
+            done
+            variables_json="$variables_json}"
+            
+            # Update variable group
+            echo "Updating variable group with secrets..."
+            update_response=$(curl -s -X PUT \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"id\": $vg_id,
+                \"name\": \"$VG_NAME\",
+                \"type\": \"Vsts\",
+                \"variables\": $variables_json,
+                \"variableGroupProjectReferences\": $project_refs
+              }")
+            
+            # Check if update was successful
+            updated_id=$(echo "$update_response" | jq -r '.id // empty')
+            if [ -z "$updated_id" ]; then
+              echo "Error: Failed to update variable group"
+              echo "Response: $update_response"
+              exit 1
             fi
+            
+            echo "✓ Azure DevOps secrets synced to '$REPO_TAG' successfully"
           done
-          variables_json="$variables_json}"
-          
-          # Update variable group
-          echo "Updating variable group with secrets..."
-          update_response=$(curl -s -X PUT \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/distributedtask/variablegroups/$vg_id?api-version=7.1-preview.2" \
-            -H "$AUTH_HEADER" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"id\": $vg_id,
-              \"name\": \"fcli-ci-test\",
-              \"type\": \"Vsts\",
-              \"variables\": $variables_json,
-              \"variableGroupProjectReferences\": $project_refs
-            }")
-          
-          # Check if update was successful
-          updated_id=$(echo "$update_response" | jq -r '.id // empty')
-          if [ -z "$updated_id" ]; then
-            echo "Error: Failed to update variable group"
-            echo "Response: $update_response"
-            exit 1
-          fi
-          
-          echo "✓ Azure DevOps secrets synced successfully"
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
           FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
           FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
           FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
           FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+      
+      - name: Sync GitHub secrets and variables
+        if: steps.check.outputs.needed == 'true' && matrix.platform == 'github'
+        run: |
+          set -e
+          
+          # Loop through all repos for GitHub
+          for repo in $(jq -c '.repos[]' "ci/github/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
+            
+            echo "===================================="
+            echo "Syncing secrets/variables to GitHub repo '$REPO_TAG'..."
+            echo "===================================="
+            
+            # Sync regular variables (not encrypted)
+            for var_name in $(jq -r '.variableNames[]' ci/github/config.json); do
+              var_value="${!var_name}"
+              if [ -n "$var_value" ]; then
+                echo "Updating variable: $var_name"
+                # Delete if exists, then create
+                gh variable delete "$var_name" --repo "$GITHUB_REPO" 2>/dev/null || true
+                gh variable set "$var_name" --body "$var_value" --repo "$GITHUB_REPO"
+              fi
+            done
+            
+            # Sync secrets (using gh CLI which handles encryption)
+            for secret_name in $(jq -r '.secretNames[]' ci/github/config.json); do
+              secret_value="${!secret_name}"
+              if [ -n "$secret_value" ]; then
+                echo "Updating secret: $secret_name"
+                # gh secret set handles encryption automatically
+                echo "$secret_value" | gh secret set "$secret_name" --repo "$GITHUB_REPO"
+              fi
+            done
+            
+            echo "✓ GitHub secrets and variables synced to '$REPO_TAG' successfully"
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FCLI_FT_FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FCLI_FT_SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          FCLI_FT_FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FCLI_FT_FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
           FCLI_FT_SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
           FCLI_FT_SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
 
@@ -429,19 +505,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Read CI config
-        id: config
-        run: |
-          repo_url=$(jq -r '.repoUrl' "ci/${{ matrix.platform }}/config.json")
-          echo "repo_url=$repo_url" >> $GITHUB_OUTPUT
-          
-          # Check if this is the same repo
-          if [ "$repo_url" = "https://github.com/${{ github.repository }}" ]; then
-            echo "is_local=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_local=false" >> $GITHUB_OUTPUT
-          fi
       
       - name: Generate Fortify release/appversion name
         id: fortify-release
@@ -471,75 +534,110 @@ jobs:
         id: github-trigger
         if: matrix.platform == 'github'
         run: |
-          # Trigger workflow and capture the time
-          trigger_time=$(date -u +%s)
+          set -e
           
           # Convert setup steps JSON to string for workflow input
           setup_steps='${{ toJSON(matrix.github_setup_steps) }}'
           
-          gh workflow run test-pipeline.yml \
-            --ref ${{ github.ref }} \
-            -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
-            -f version=${{ matrix.version }} \
-            -f fcli_version=${{ github.event.inputs.fcli_version }} \
-            -f product=${{ matrix.product }} \
-            -f component=${{ matrix.component }} \
-            -f source_dir=sources/${{ matrix.source_dir }} \
-            -f os=${{ matrix.os }} \
-            -f fortify_release=${{ steps.fortify-release.outputs.name }} \
-            -f setup_steps="$setup_steps"
-          
-          echo "Triggered GitHub workflow, waiting for run to start..."
-          sleep 10
-          
-          # Find the most recent run that started after our trigger
-          run_id=$(gh run list \
-            --workflow=test-pipeline.yml \
-            --branch=${{ github.ref_name }} \
-            --limit=10 \
-            --json databaseId,createdAt,status \
-            --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
-          
-          if [ -z "$run_id" ]; then
-            echo "Error: Could not find triggered workflow run"
-            exit 1
-          fi
-          
-          run_url="https://github.com/${{ github.repository }}/actions/runs/$run_id"
-          echo "Found workflow run ID: $run_id"
-          echo "Workflow URL: $run_url"
-          echo "run_url=$run_url" >> $GITHUB_OUTPUT
-          echo "Polling for completion (timeout: 30 minutes)..."
-          
-          # Poll for completion
-          timeout=1800  # 30 minutes
-          elapsed=0
-          interval=30
-          
-          while [ $elapsed -lt $timeout ]; do
-            status=$(gh run view $run_id --json status,conclusion --jq '.status + ":" + .conclusion')
-            run_status=$(echo $status | cut -d: -f1)
-            run_conclusion=$(echo $status | cut -d: -f2)
+          # Loop through all GitHub repos  
+          repo_index=0
+          for repo in $(jq -c '.repos[]' "ci/github/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            GITHUB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            GITHUB_REPO=$(echo "$GITHUB_REPO_URL" | sed 's|https://github.com/||')
             
-            echo "[$elapsed s] Status: $run_status, Conclusion: $run_conclusion"
+            echo "===================================="
+            echo "Triggering GitHub test in repo '$REPO_TAG' ($GITHUB_REPO)"
+            echo "===================================="
             
-            if [ "$run_status" = "completed" ]; then
-              if [ "$run_conclusion" = "success" ]; then
-                echo "✓ Test passed!"
-                exit 0
-              else
-                echo "✗ Test failed with conclusion: $run_conclusion"
-                gh run view $run_id --log-failed
-                exit 1
-              fi
+            # Trigger workflow and capture the time
+            trigger_time=$(date -u +%s)
+            
+            gh workflow run test-pipeline.yml \
+              --repo "$GITHUB_REPO" \
+              -f pipeline_name="${{ steps.pipeline-name.outputs.name }}" \
+              -f version=${{ matrix.version }} \
+              -f fcli_version=${{ github.event.inputs.fcli_version }} \
+              -f product=${{ matrix.product }} \
+              -f component=${{ matrix.component }} \
+              -f source_dir=sources/${{ matrix.source_dir }} \
+              -f os=${{ matrix.os }} \
+              -f fortify_release=${{ steps.fortify-release.outputs.name }} \
+              -f setup_steps="$setup_steps"
+            
+            echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
+            sleep 10
+            
+            # Find the most recent run that started after our trigger
+            run_id=$(gh run list \
+              --repo "$GITHUB_REPO" \
+              --workflow=test-pipeline.yml \
+              --limit=10 \
+              --json databaseId,createdAt,status \
+              --jq "[.[] | select(.createdAt | fromdateiso8601 > $trigger_time)] | .[0].databaseId")
+            
+            if [ -z "$run_id" ]; then
+              echo "Error: Could not find triggered workflow run"
+              exit 1
             fi
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            run_url="https://github.com/$GITHUB_REPO/actions/runs/$run_id"
+            echo "Found workflow run ID: $run_id"
+            echo "Workflow URL: $run_url"
+            echo "Polling for completion (timeout: 30 minutes)..."
+            
+            # Poll for completion
+            timeout=1800  # 30 minutes
+            elapsed=0
+            interval=30
+            test_passed=false
+            
+            while [ $elapsed -lt $timeout ]; do
+              status=$(gh run view $run_id --repo "$GITHUB_REPO" --json status,conclusion --jq '.status + ":" + .conclusion')
+              run_status=$(echo $status | cut -d: -f1)
+              run_conclusion=$(echo $status | cut -d: -f2)
+              
+              echo "[$elapsed s] Status: $run_status, Conclusion: $run_conclusion"
+              
+              if [ "$run_status" = "completed" ]; then
+                if [ "$run_conclusion" = "success" ]; then
+                  echo "✓ Test passed in repo '$REPO_TAG'!"
+                  test_passed=true
+                else
+                  echo "✗ Test failed in repo '$REPO_TAG' with conclusion: $run_conclusion"
+                  gh run view $run_id --repo "$GITHUB_REPO" --log-failed || true
+                  test_passed=false
+                fi
+                break
+              fi
+              
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
+            
+            if [ $elapsed -ge $timeout ]; then
+              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+              test_passed=false
+            fi
+            
+            # Create artifact for this repo
+            mkdir -p pipeline-info
+            cat > "pipeline-info/github-${REPO_TAG}-${repo_index}.json" <<EOF
+{
+  "platform": "github",
+  "repo_tag": "$REPO_TAG",
+  "version": "${{ matrix.version }}",
+  "component": "${{ matrix.component }}",
+  "product": "${{ matrix.product }}",
+  "source_dir": "${{ matrix.source_dir }}",
+  "os": "${{ matrix.os }}",
+  "pipeline_url": "$run_url",
+  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+}
+EOF
+            
+            repo_index=$((repo_index + 1))
           done
-          
-          echo "✗ Test timed out after $timeout seconds"
-          exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -549,70 +647,101 @@ jobs:
         run: |
           set -e
           
-          # Read GitLab config
-          GITLAB_REPO_URL=$(jq -r '.repoUrl' ci/gitlab/config.json)
-          GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
-          
-          echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
-          pipeline_response=$(curl -f -X POST \
-            "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
-            -F "token=$GITLAB_TRIGGER_TOKEN" \
-            -F "ref=main" \
-            -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
-            -F "variables[VERSION]=${{ matrix.version }}" \
-            -F "variables[FCLI_VERSION]=${{ github.event.inputs.fcli_version }}" \
-            -F "variables[PRODUCT]=${{ matrix.product }}" \
-            -F "variables[COMPONENT]=${{ matrix.component }}" \
-            -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
-            -F "variables[OS]=${{ matrix.os }}" \
-            -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
-            -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
-          
-          pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
-          pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
-          echo "Pipeline ID: $pipeline_id"
-          echo "Pipeline URL: $pipeline_url"
-          echo "pipeline_url=$pipeline_url" >> $GITHUB_OUTPUT
-          
-          echo "Polling for completion (timeout: 30 minutes)..."
-          timeout=1800
-          elapsed=0
-          interval=30
-          
-          while [ $elapsed -lt $timeout ]; do
-            pipeline_status=$(curl -f -s \
-              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
-              -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
+          # Loop through all GitLab repos
+          repo_index=0
+          for repo in $(jq -c '.repos[]' "ci/gitlab/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            GITLAB_REPO_URL=$(echo "$repo" | jq -r '.url')
+            GITLAB_PROJECT_ID=$(echo "$GITLAB_REPO_URL" | sed 's|https://gitlab.com/||' | sed 's|/|%2F|g')
             
-            echo "[$elapsed s] Status: $pipeline_status"
+            echo "===================================="
+            echo "Triggering GitLab pipeline in repo '$REPO_TAG'"
+            echo "===================================="
             
-            case "$pipeline_status" in
-              success)
-                echo "✓ Test passed!"
-                exit 0
-                ;;
-              failed|canceled|skipped)
-                echo "✗ Test failed with status: $pipeline_status"
-                curl -f -s \
-                  "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
-                  -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}'
-                exit 1
-                ;;
-              running|pending|created|waiting_for_resource|preparing)
-                # Continue polling
-                ;;
-              *)
-                echo "Unknown status: $pipeline_status"
-                exit 1
-                ;;
-            esac
+            echo "Triggering GitLab pipeline: ${{ steps.pipeline-name.outputs.name }}"
+            pipeline_response=$(curl -f -X POST \
+              "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/trigger/pipeline" \
+              -F "token=$GITLAB_TRIGGER_TOKEN" \
+              -F "ref=main" \
+              -F "variables[PIPELINE_NAME]=${{ steps.pipeline-name.outputs.name }}" \
+              -F "variables[VERSION]=${{ matrix.version }}" \
+              -F "variables[FCLI_VERSION]=${{ github.event.inputs.fcli_version }}" \
+              -F "variables[PRODUCT]=${{ matrix.product }}" \
+              -F "variables[COMPONENT]=${{ matrix.component }}" \
+              -F "variables[SOURCE_DIR]=sources/${{ matrix.source_dir }}" \
+              -F "variables[OS]=${{ matrix.os }}" \
+              -F "variables[FORTIFY_RELEASE]=${{ steps.fortify-release.outputs.name }}" \
+              -F "variables[GITLAB_IMAGE]=${{ matrix.gitlab_image }}")
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            pipeline_id=$(echo "$pipeline_response" | jq -r '.id')
+            pipeline_url="$GITLAB_REPO_URL/-/pipelines/$pipeline_id"
+            echo "Pipeline ID: $pipeline_id"
+            echo "Pipeline URL: $pipeline_url"
+            
+            echo "Polling for completion (timeout: 30 minutes)..."
+            timeout=1800
+            elapsed=0
+            interval=30
+            test_passed=false
+            
+            while [ $elapsed -lt $timeout ]; do
+              pipeline_status=$(curl -f -s \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq -r '.status')
+              
+              echo "[$elapsed s] Status: $pipeline_status"
+              
+              case "$pipeline_status" in
+                success)
+                  echo "✓ Test passed in repo '$REPO_TAG'!"
+                  test_passed=true
+                  break
+                  ;;
+                failed|canceled|skipped)
+                  echo "✗ Test failed in repo '$REPO_TAG' with status: $pipeline_status"
+                  curl -f -s \
+                    "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
+                    -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}' || true
+                  test_passed=false
+                  break
+                  ;;
+                running|pending|created|waiting_for_resource|preparing)
+                  # Continue polling
+                  ;;
+                *)
+                  echo "Unknown status: $pipeline_status"
+                  test_passed=false
+                  break
+                  ;;
+              esac
+              
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
+            
+            if [ $elapsed -ge $timeout ]; then
+              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+              test_passed=false
+            fi
+            
+            # Create artifact for this repo
+            mkdir -p pipeline-info
+            cat > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json" <<EOF
+{
+  "platform": "gitlab",
+  "repo_tag": "$REPO_TAG",
+  "version": "${{ matrix.version }}",
+  "component": "${{ matrix.component }}",
+  "product": "${{ matrix.product }}",
+  "source_dir": "${{ matrix.source_dir }}",
+  "os": "${{ matrix.os }}",
+  "pipeline_url": "$pipeline_url",
+  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+}
+EOF
+            
+            repo_index=$((repo_index + 1))
           done
-          
-          echo "✗ Test timed out after $timeout seconds"
-          exit 1
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
@@ -623,179 +752,171 @@ jobs:
         run: |
           set -e
           
-          # Parse ADO org and project from config
-          ADO_REPO_URL=$(jq -r '.repoUrl' ci/${{ matrix.platform }}/config.json)
-          ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
-          ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
-          
-          echo "Triggering Azure DevOps pipeline ($ADO_ORG/$ADO_PROJ)..."
-          
-          # Create auth header
-          AUTH_HEADER="Authorization: Basic $(printf ":%s" "${{ secrets.ADO_PAT }}" | base64 -w 0)"
-          
-          # Find the pipeline ID by querying for pipelines with path azure-pipelines.yml
-          echo "Looking up pipeline ID..."
-          pipelines_response=$(curl -s \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines?api-version=7.1-preview.1" \
-            -H "$AUTH_HEADER")
-          
-          pipeline_id=$(echo "$pipelines_response" | jq -r '.value[] | select(.folder == "\\ci\\ado" or .folder == "/ci/ado" or (.configuration.path // "" | contains("azure-pipelines.yml"))) | .id' | head -n1)
-          
-          # If not found by folder/path, try finding by name or just get the first pipeline
-          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
-            echo "Pipeline not found by path, trying first available pipeline..."
-            pipeline_id=$(echo "$pipelines_response" | jq -r '.value[0].id')
-          fi
-          
-          if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
-            echo "Error: Could not find pipeline ID"
-            echo "Available pipelines:"
-            echo "$pipelines_response" | jq '.value[] | {id, name, folder, path: .configuration.path}'
-            exit 1
-          fi
-          
-          echo "Using pipeline ID: $pipeline_id"
-          
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
           
-          # Debug: Show what we're about to send
-          echo "=== Pipeline Trigger Parameters ==="
-          echo "PIPELINE_NAME: ${{ steps.pipeline-name.outputs.name }}"
-          echo "VERSION: ${{ matrix.version }}"
-          echo "FCLI_VERSION: ${{ github.event.inputs.fcli_version }}"
-          echo "PRODUCT: ${{ matrix.product }}"
-          echo "COMPONENT: ${{ matrix.component }}"
-          echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
-          echo "OS: ${{ matrix.os }}"
-          echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
-          echo "SETUP_TASKS length: $(echo "$ado_setup_tasks" | jq 'length')"
-          echo "===================================="
-          
-          build_response=$(curl -s -X POST \
-            "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/$pipeline_id/runs?api-version=7.1-preview.1" \
-            -H "$AUTH_HEADER" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"resources\": {
-                \"repositories\": {
-                  \"self\": {
-                    \"refName\": \"refs/heads/main\"
-                  }
-                }
-              },
-              \"templateParameters\": {
-                \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
-                \"VERSION\": \"${{ matrix.version }}\",
-                \"FCLI_VERSION\": \"${{ github.event.inputs.fcli_version }}\",
-                \"PRODUCT\": \"${{ matrix.product }}\",
-                \"COMPONENT\": \"${{ matrix.component }}\",
-                \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
-                \"OS\": \"${{ matrix.os }}\",
-                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
-                \"SETUP_TASKS\": $ado_setup_tasks
-              }
-            }")
-          
-          # Check if response is valid JSON
-          if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
-            echo "Error: API returned invalid JSON response:"
-            echo "$build_response"
-            exit 1
-          fi
-          
-          build_id=$(echo "$build_response" | jq -r '.id')
-          if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then
-            echo "Error: Failed to get build ID from response:"
-            echo "$build_response" | jq .
-            exit 1
-          fi
-          
-          build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
-          echo "Build ID: $build_id"
-          echo "Build URL: $build_url"
-          echo "build_url=$build_url" >> $GITHUB_OUTPUT
-          
-          echo "Polling for completion (timeout: 30 minutes)..."
-          timeout=1800
-          elapsed=0
-          interval=30
-          
-          while [ $elapsed -lt $timeout ]; do
-            build_info=$(curl -s \
-              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
+          # Loop through all ADO repos
+          repo_index=0
+          for repo in $(jq -c '.repos[]' "ci/ado/config.json"); do
+            REPO_TAG=$(echo "$repo" | jq -r '.tag')
+            ADO_REPO_URL=$(echo "$repo" | jq -r '.url')
+            ADO_ORG=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f1)
+            ADO_PROJ=$(echo "$ADO_REPO_URL" | sed 's|https://dev.azure.com/||' | cut -d'/' -f2)
+            ADO_REPO=$(echo "$ADO_REPO_URL" | sed 's|.*/||')
+            
+            echo "===================================="
+            echo "Triggering Azure DevOps pipeline in repo '$REPO_TAG' ($ADO_ORG/$ADO_PROJ)"
+            echo "===================================="
+            
+            # Create auth header
+            AUTH_HEADER="Authorization: Basic $(printf ":%s" "${{ secrets.ADO_PAT }}" | base64 -w 0)"
+            
+            # Find the pipeline ID by querying for pipelines with path azure-pipelines.yml
+            echo "Looking up pipeline ID..."
+            pipelines_response=$(curl -s \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines?api-version=7.1-preview.1" \
               -H "$AUTH_HEADER")
             
-            build_status=$(echo "$build_info" | jq -r '.status')
-            build_result=$(echo "$build_info" | jq -r '.result')
+            pipeline_id=$(echo "$pipelines_response" | jq -r '.value[] | select(.folder == "\\ci\\ado" or .folder == "/ci/ado" or (.configuration.path // "" | contains("azure-pipelines.yml"))) | .id' | head -n1)
             
-            echo "[$elapsed s] Status: $build_status, Result: $build_result"
-            
-            if [ "$build_status" = "completed" ]; then
-              if [ "$build_result" = "succeeded" ]; then
-                echo "✓ Test passed!"
-                exit 0
-              else
-                echo "✗ Test failed with result: $build_result"
-                # Get failed job logs
-                curl -s \
-                  "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
-                  -H "$AUTH_HEADER" | \
-                  jq '.records[] | select(.result == "failed") | {name, type, result}'
-                exit 1
-              fi
+            # If not found by folder/path, try finding by name or just get the first pipeline
+            if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+              echo "Pipeline not found by path, trying first available pipeline..."
+              pipeline_id=$(echo "$pipelines_response" | jq -r '.value[0].id')
             fi
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            if [ -z "$pipeline_id" ] || [ "$pipeline_id" = "null" ]; then
+              echo "Error: Could not find pipeline ID"
+              echo "Available pipelines:"
+              echo "$pipelines_response" | jq '.value[] | {id, name, folder, path: .configuration.path}'
+              exit 1
+            fi
+            
+            echo "Using pipeline ID: $pipeline_id"
+            
+            # Debug: Show what we're about to send
+            echo "=== Pipeline Trigger Parameters ==="
+            echo "PIPELINE_NAME: ${{ steps.pipeline-name.outputs.name }}"
+            echo "VERSION: ${{ matrix.version }}"
+            echo "FCLI_VERSION: ${{ github.event.inputs.fcli_version }}"
+            echo "PRODUCT: ${{ matrix.product }}"
+            echo "COMPONENT: ${{ matrix.component }}"
+            echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
+            echo "OS: ${{ matrix.os }}"
+            echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
+            echo "SETUP_TASKS length: $(echo "$ado_setup_tasks" | jq 'length')"
+            echo "===================================="
+            
+            build_response=$(curl -s -X POST \
+              "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/pipelines/$pipeline_id/runs?api-version=7.1-preview.1" \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"resources\": {
+                  \"repositories\": {
+                    \"self\": {
+                      \"refName\": \"refs/heads/main\"
+                    }
+                  }
+                },
+                \"templateParameters\": {
+                  \"PIPELINE_NAME\": \"${{ steps.pipeline-name.outputs.name }}\",
+                  \"VERSION\": \"${{ matrix.version }}\",
+                  \"FCLI_VERSION\": \"${{ github.event.inputs.fcli_version }}\",
+                  \"PRODUCT\": \"${{ matrix.product }}\",
+                  \"COMPONENT\": \"${{ matrix.component }}\",
+                  \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
+                  \"OS\": \"${{ matrix.os }}\",
+                  \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
+                  \"SETUP_TASKS\": $ado_setup_tasks
+                }
+              }")
+            
+            # Check if response is valid JSON
+            if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
+              echo "Error: API returned invalid JSON response:"
+              echo "$build_response"
+              exit 1
+            fi
+            
+            build_id=$(echo "$build_response" | jq -r '.id')
+            if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then
+              echo "Error: Failed to get build ID from response:"
+              echo "$build_response" | jq .
+              exit 1
+            fi
+            
+            build_url="https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_build/results?buildId=$build_id"
+            echo "Build ID: $build_id"
+            echo "Build URL: $build_url"
+            
+            echo "Polling for completion (timeout: 30 minutes)..."
+            timeout=1800
+            elapsed=0
+            interval=30
+            test_passed=false
+            
+            while [ $elapsed -lt $timeout ]; do
+              build_info=$(curl -s \
+                "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
+                -H "$AUTH_HEADER")
+              
+              build_status=$(echo "$build_info" | jq -r '.status')
+              build_result=$(echo "$build_info" | jq -r '.result')
+              
+              echo "[$elapsed s] Status: $build_status, Result: $build_result"
+              
+              if [ "$build_status" = "completed" ]; then
+                if [ "$build_result" = "succeeded" ]; then
+                  echo "✓ Test passed in repo '$REPO_TAG'!"
+                  test_passed=true
+                else
+                  echo "✗ Test failed in repo '$REPO_TAG' with result: $build_result"
+                  # Get failed job logs
+                  curl -s \
+                    "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
+                    -H "$AUTH_HEADER" | \
+                    jq '.records[] | select(.result == "failed") | {name, type, result}' || true
+                  test_passed=false
+                fi
+                break
+              fi
+              
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
+            
+            if [ $elapsed -ge $timeout ]; then
+              echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+              test_passed=false
+            fi
+            
+            # Create artifact for this repo
+            mkdir -p pipeline-info
+            cat > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json" <<EOF
+{
+  "platform": "ado",
+  "repo_tag": "$REPO_TAG",
+  "version": "${{ matrix.version }}",
+  "component": "${{ matrix.component }}",
+  "product": "${{ matrix.product }}",
+  "source_dir": "${{ matrix.source_dir }}",
+  "os": "${{ matrix.os }}",
+  "pipeline_url": "$build_url",
+  "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
+}
+EOF
+            
+            repo_index=$((repo_index + 1))
           done
-          
-          echo "✗ Test timed out after $timeout seconds"
-          exit 1
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
-      
-      - name: Store pipeline info
-        if: always()
-        run: |
-          mkdir -p pipeline-info
-          platform="${{ matrix.platform }}"
-          ci_system="${{ matrix.ci_system }}"
-          product="${{ matrix.product }}"
-          component="${{ matrix.component }}"
-          source_dir="${{ matrix.source_dir }}"
-          os="${{ matrix.os }}"
-          
-          # Get the appropriate URL based on platform
-          if [ "$platform" = "github" ]; then
-            url="${{ steps.github-trigger.outputs.run_url }}"
-          elif [ "$platform" = "gitlab" ]; then
-            url="${{ steps.gitlab-trigger.outputs.pipeline_url }}"
-          elif [ "$platform" = "ado" ]; then
-            url="${{ steps.ado-trigger.outputs.build_url }}"
-          fi
-          
-          # Determine test result
-          if [ "${{ job.status }}" = "success" ]; then
-            status="✅ PASS"
-          else
-            status="❌ FAIL"
-          fi
-          
-          # Create a unique filename for this test combination (sanitize special chars)
-          safe_ci_system=$(echo "$ci_system" | tr ':/' '__')
-          filename="${safe_ci_system}_${product}_${component}_${source_dir}_${os}.txt"
-          echo "$status|$url" > "pipeline-info/$filename"
-          
-          # Sanitize version for artifact name (remove special chars)
-          safe_version=$(echo "${{ matrix.version }}" | tr '/:' '__')
-          echo "safe_version=$safe_version" >> $GITHUB_ENV
       
       - name: Upload pipeline info
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-info-${{ matrix.platform }}-${{ env.safe_version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
+          name: pipeline-info-${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}
           path: pipeline-info/
           retention-days: 1
 
@@ -826,30 +947,48 @@ jobs:
             echo "### Test Results" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
+            # Create table header
+            echo "| CI System | Repo | Version | Component | Product | Source | OS | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|------|---------|-----------|---------|--------|----|---------
+
+|" >> $GITHUB_STEP_SUMMARY
+            
             # Count pass/fail
             pass_count=0
             fail_count=0
             
-            for file in pipeline-info/*.txt; do
+            # Process JSON files
+            for file in pipeline-info/*.json; do
               if [ -f "$file" ]; then
-                filename=$(basename "$file" .txt)
-                content=$(cat "$file")
+                platform=$(jq -r '.platform' "$file")
+                repo_tag=$(jq -r '.repo_tag' "$file")
+                version=$(jq -r '.version' "$file")
+                component=$(jq -r '.component' "$file")
+                product=$(jq -r '.product' "$file")
+                source_dir=$(jq -r '.source_dir' "$file")
+                os=$(jq -r '.os' "$file")
+                pipeline_url=$(jq -r '.pipeline_url' "$file")
+                status=$(jq -r '.status' "$file")
                 
-                # Parse status and URL
-                status=$(echo "$content" | cut -d'|' -f1)
-                url=$(echo "$content" | cut -d'|' -f2)
+                # Format CI system name
+                case "$platform" in
+                  github) ci_name="GitHub" ;;
+                  gitlab) ci_name="GitLab" ;;
+                  ado) ci_name="Azure DevOps" ;;
+                  *) ci_name="$platform" ;;
+                esac
                 
-                # Parse the filename back to readable format
-                readable_name=$(echo "$filename" | sed 's/_/ / g' | sed 's/github:/GitHub: /; s/gitlab:/GitLab: /; s/ado:/ADO: /')
-                
-                echo "- $status [$readable_name]($url)" >> $GITHUB_STEP_SUMMARY
-                
-                # Count results
-                if echo "$status" | grep -q "PASS"; then
+                # Format status
+                if [ "$status" = "passed" ]; then
+                  status_icon="✅ PASS"
                   pass_count=$((pass_count + 1))
                 else
+                  status_icon="❌ FAIL"
                   fail_count=$((fail_count + 1))
                 fi
+                
+                # Add table row with link to pipeline
+                echo "| $ci_name | $repo_tag | $version | $component | $product | $source_dir | $os | [$status_icon]($pipeline_url) |" >> $GITHUB_STEP_SUMMARY
               fi
             done
             

@@ -1,11 +1,11 @@
 # WARNING: Auto-Managed Repository
 
-This repository is automatically managed by [fcli-ci-test](https://github.com/fortify/fcli-ci-test).
+This repository is automatically managed by [fcli-ci-test-runner](https://github.com/fortify/fcli-ci-test-runner).
 
 **All changes made directly in this repository will be overwritten.**
 
-To make changes, edit the source files in the fcli-ci-test repository:
-- https://github.com/fortify/fcli-ci-test/tree/main/ci/gitlab
+To make changes, edit the source files in the fcli-ci-test-runner repository:
+- https://github.com/fortify/fcli-ci-test-runner/tree/main/ci/gitlab
 
 Changes will be automatically synchronized when integration tests run.
 

@@ -1,5 +1,14 @@
 {
-  "repoUrl": "https://github.com/fortify/fcli-ci-test",
+  "repos": [
+    {
+      "tag": "public",
+      "url": "https://github.com/fortify/fcli-ci-test-public"
+    },
+    {
+      "tag": "private",
+      "url": "https://github.com/fortify/fcli-ci-test-private"
+    }
+  ],
   "supportedOs": ["linux", "windows", "mac"],
   "variableNames": [
     "FCLI_FT_FOD_URL",

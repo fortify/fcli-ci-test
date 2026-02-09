@@ -1,12 +1,12 @@
-# DVPWA - Damn Vulnerable Python Web Application
+# DVNA - Damn Vulnerable NodeJS Application
 
 ## Source
-This application is sourced from https://github.com/anxolerd/dvpwa
+This application is sourced from https://github.com/appsecco/dvna
 
 ## License
 MIT License
 
-Copyright (c) 2017 Oleksii Ivanchuk
+Copyright (c) 2017 Appsecco Ltd.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,18 +26,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## Purpose in fcli-ci-test
-This vulnerable Python application is used to test Fortify static analysis scanning 
+## Purpose in fcli-ci-test-runner
+This vulnerable Node.js application is used to test Fortify static analysis scanning 
 capabilities across different CI/CD platforms (GitHub Actions, GitLab CI, Azure DevOps).
 
 The application intentionally contains security vulnerabilities including:
 - SQL Injection
 - Cross-Site Scripting (XSS)
 - Command Injection
-- Path Traversal
+- XML External Entity (XXE) Injection
+- Insecure Deserialization
 - And more...
 
 ## Build Tool
-- **Language**: Python
-- **Build Tool**: pip
-- **Build Command**: `pip install -r requirements.txt`
+- **Language**: JavaScript (Node.js)
+- **Build Tool**: npm
+- **Build Command**: `npm install`

@@ -1,4 +1,4 @@
-# fcli-ci-test
+# fcli-ci-test-runner
 
 Integration testing repository for fcli across multiple CI platforms (GitHub Actions, GitLab CI, Azure DevOps).
 
@@ -65,9 +65,9 @@ This will test `fortify/github-action@feat-ci-integration` branch. Also supports
 
 | Platform | Versions | Supported OS | Notes |
 |----------|----------|--------------|-------|
-| GitHub Actions | v2, v3, branches, commits | Linux, Windows, Mac | Runs inline in this repo |
-| GitLab CI | v2, v3 | Linux | Syncs to gitlab.com/fortify/fcli-ci-test |
-| Azure DevOps | v1 | Linux, Windows, Mac | Syncs to dev.azure.com/fortify-oss/fcli-ci-test |
+| GitHub Actions | v2, v3, branches, commits | Linux, Windows, Mac | Syncs to fortify/fcli-ci-test-* |
+| GitLab CI | v2, v3 | Linux | Syncs to Fortify/components/fcli-ci-test-* |
+| Azure DevOps | v1 | Linux, Windows, Mac | Syncs to fortify-pm/fcli-ci-test/_git/fcli-ci-test-* |
 
 ## Secrets
 
@@ -134,8 +134,15 @@ Each CI platform has a `config.json` file defining:
 
 The following external repositories are automatically managed by this repository:
 
-- **GitLab**: https://gitlab.com/fortify/fcli-ci-test
-- **Azure DevOps**: https://dev.azure.com/fortify-oss/fcli-ci-test
+- **GitHub**: 
+  - https://github.com/fortify/fcli-ci-test-public
+  - https://github.com/fortify/fcli-ci-test-private
+- **GitLab**: 
+  - https://gitlab.com/Fortify/components/fcli-ci-test-public
+  - https://gitlab.com/Fortify/components/fcli-ci-test-private
+- **Azure DevOps**: 
+  - https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-public
+  - https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-private
 
 **⚠️ WARNING**: All changes made directly in these repositories will be overwritten during test runs.
 

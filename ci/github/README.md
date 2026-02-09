@@ -12,9 +12,9 @@ See [config.json](config.json) for:
 
 ## Test Pipeline
 
-The test pipeline is located at [.github/workflows/test-pipeline.yml](../../.github/workflows/test-pipeline.yml).
+The test pipeline is located at [.github/workflows/test-pipeline.yml](.github/workflows/test-pipeline.yml).
 
-This pipeline is triggered by the main orchestrator workflow and executes tests using different versions of the `fortify/github-action`.
+This pipeline file is synced to remote GitHub repositories where it executes tests using different versions of the `fortify/github-action`.
 
 ## Secrets
 

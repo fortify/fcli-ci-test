@@ -1,5 +1,14 @@
 {
-  "repoUrl": "https://gitlab.com/Fortify/components/fcli-ci-test",
+  "repos": [
+    {
+      "tag": "public",
+      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-public"
+    },
+    {
+      "tag": "private",
+      "url": "https://gitlab.com/Fortify/components/fcli-ci-test-private"
+    }
+  ],
   "supportedOs": ["linux"],
   "variableNames": [
     "FCLI_FT_FOD_URL",
