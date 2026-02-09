@@ -2,11 +2,11 @@
   "repos": [
     {
       "tag": "public",
-      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-public"
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-public/_git/fcli-ci-test-public"
     },
     {
       "tag": "private",
-      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test/_git/fcli-ci-test-private"
+      "url": "https://dev.azure.com/fortify-pm/fcli-ci-test-private/_git/fcli-ci-test-private"
     }
   ],
   "supportedOs": ["linux", "windows", "mac"],
