@@ -642,19 +642,18 @@ jobs:
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/github-${REPO_TAG}-${repo_index}.json" <<'EOF'
-            {
-              "platform": "github",
-              "repo_tag": "$REPO_TAG",
-              "version": "${{ matrix.version }}",
-              "component": "${{ matrix.component }}",
-              "product": "${{ matrix.product }}",
-              "source_dir": "${{ matrix.source_dir }}",
-              "os": "${{ matrix.os }}",
-              "pipeline_url": "$run_url",
-              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-            }
-            EOF
+            jq -n \
+              --arg platform "github" \
+              --arg repo_tag "$REPO_TAG" \
+              --arg version "${{ matrix.version }}" \
+              --arg component "${{ matrix.component }}" \
+              --arg product "${{ matrix.product }}" \
+              --arg source_dir "${{ matrix.source_dir }}" \
+              --arg os "${{ matrix.os }}" \
+              --arg pipeline_url "$run_url" \
+              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+              > "pipeline-info/github-${REPO_TAG}-${repo_index}.json"
             
             repo_index=$((repo_index + 1))
           done
@@ -752,19 +751,18 @@ jobs:
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json" <<'EOF'
-            {
-              "platform": "gitlab",
-              "repo_tag": "$REPO_TAG",
-              "version": "${{ matrix.version }}",
-              "component": "${{ matrix.component }}",
-              "product": "${{ matrix.product }}",
-              "source_dir": "${{ matrix.source_dir }}",
-              "os": "${{ matrix.os }}",
-              "pipeline_url": "$pipeline_url",
-              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-            }
-            EOF
+            jq -n \
+              --arg platform "gitlab" \
+              --arg repo_tag "$REPO_TAG" \
+              --arg version "${{ matrix.version }}" \
+              --arg component "${{ matrix.component }}" \
+              --arg product "${{ matrix.product }}" \
+              --arg source_dir "${{ matrix.source_dir }}" \
+              --arg os "${{ matrix.os }}" \
+              --arg pipeline_url "$pipeline_url" \
+              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+              > "pipeline-info/gitlab-${REPO_TAG}-${repo_index}.json"
             
             repo_index=$((repo_index + 1))
           done
@@ -921,19 +919,18 @@ jobs:
             
             # Create artifact for this repo
             mkdir -p pipeline-info
-            cat > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json" <<'EOF'
-            {
-              "platform": "ado",
-              "repo_tag": "$REPO_TAG",
-              "version": "${{ matrix.version }}",
-              "component": "${{ matrix.component }}",
-              "product": "${{ matrix.product }}",
-              "source_dir": "${{ matrix.source_dir }}",
-              "os": "${{ matrix.os }}",
-              "pipeline_url": "$build_url",
-              "status": "$([ "$test_passed" = true ] && echo "passed" || echo "failed")"
-            }
-            EOF
+            jq -n \
+              --arg platform "ado" \
+              --arg repo_tag "$REPO_TAG" \
+              --arg version "${{ matrix.version }}" \
+              --arg component "${{ matrix.component }}" \
+              --arg product "${{ matrix.product }}" \
+              --arg source_dir "${{ matrix.source_dir }}" \
+              --arg os "${{ matrix.os }}" \
+              --arg pipeline_url "$build_url" \
+              --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
+              '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
+              > "pipeline-info/ado-${REPO_TAG}-${repo_index}.json"
             
             repo_index=$((repo_index + 1))
           done
