@@ -548,12 +548,12 @@ jobs:
       - name: Generate Fortify release/appversion name
         id: fortify-release
         run: |
-          # Generate: fcli/ci-test/<platform>/<version>/<os>/<source_dir>:current
+          # Generate: fcli/ci-test/<platform>/<repo_tag>/<version>/<os>/<source_dir>:current
           # Skip source_dir if component is setup (uses 'none')
           if [ "${{ matrix.component }}" = "setup" ]; then
-            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}"
+            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.repo_tag }}/${{ matrix.version }}/${{ matrix.os }}:current"
           else
-            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}/${{ matrix.source_dir }}:current"
+            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.repo_tag }}/${{ matrix.version }}/${{ matrix.os }}/${{ matrix.source_dir }}:current"
           fi
           echo "name=$release" >> $GITHUB_OUTPUT
       
@@ -586,6 +586,9 @@ jobs:
         if: matrix.platform == 'github'
         run: |
           set -e
+          
+          # Trap termination signals for graceful cancellation
+          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
           
           # Store parent workflow token for cancellation checks
           PARENT_GH_TOKEN="${{ github.token }}"
@@ -671,12 +674,14 @@ jobs:
           # Poll for completion
           timeout=$((60 * ${{ github.event.inputs.timeout_minutes}}))
           elapsed=0
-          interval=30
+          poll_interval=30
+          check_interval=5
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
             # Check if this workflow run has been cancelled
             parent_run_status=$(GH_TOKEN="$PARENT_GH_TOKEN" gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+            echo "[DEBUG] Parent workflow status check: $parent_run_status"
             if [ "$parent_run_status" = "cancelled" ]; then
               echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
               echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
@@ -703,8 +708,22 @@ jobs:
               break
             fi
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            # Sleep in small chunks to check for cancellation more frequently
+            sleep_remaining=$poll_interval
+            while [ $sleep_remaining -gt 0 ] && [ $elapsed -lt $timeout ]; do
+              sleep $check_interval
+              elapsed=$((elapsed + check_interval))
+              sleep_remaining=$((sleep_remaining - check_interval))
+              
+              # Check for cancellation during sleep
+              parent_run_status=$(GH_TOKEN="$PARENT_GH_TOKEN" gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
+              if [ "$parent_run_status" = "cancelled" ]; then
+                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
+                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
+                exit 1
+              fi
+            done
           done
           
           if [ $elapsed -ge $timeout ]; then
@@ -741,6 +760,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+          
+          # Trap termination signals for graceful cancellation
+          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
           
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
@@ -803,12 +825,14 @@ jobs:
           echo "Polling for completion (timeout: ${{ github.event.inputs.timeout_minutes }} minutes)..."
           timeout=$((60 * ${{ github.event.inputs.timeout_minutes }}))
           elapsed=0
-          interval=30
+          poll_interval=30
+          check_interval=5
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
             # Check if this workflow run has been cancelled
             parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+            echo "[DEBUG] Parent workflow status check: $parent_run_status"
             if [ "$parent_run_status" = "cancelled" ]; then
               echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
               echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
@@ -847,8 +871,22 @@ jobs:
                 ;;
             esac
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            # Sleep in small chunks to check for cancellation more frequently
+            sleep_remaining=$poll_interval
+            while [ $sleep_remaining -gt 0 ] && [ $elapsed -lt $timeout ]; do
+              sleep $check_interval
+              elapsed=$((elapsed + check_interval))
+              sleep_remaining=$((sleep_remaining - check_interval))
+              
+              # Check for cancellation during sleep
+              parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
+              if [ "$parent_run_status" = "cancelled" ]; then
+                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
+                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
+                exit 1
+              fi
+            done
           done
           
           if [ $elapsed -ge $timeout ]; then
@@ -885,6 +923,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+          
+          # Trap termination signals for graceful cancellation
+          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
           
           # Convert ADO setup tasks to JSON string for pipeline variable
           ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
@@ -991,12 +1032,14 @@ jobs:
           echo "Polling for completion (timeout: ${{ github.event.inputs.timeout_minutes }} minutes)..."
           timeout=$((60 * ${{ github.event.inputs.timeout_minutes }}))
           elapsed=0
-          interval=30
+          poll_interval=30
+          check_interval=5
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
             # Check if this workflow run has been cancelled
             parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+            echo "[DEBUG] Parent workflow status check: $parent_run_status"
             if [ "$parent_run_status" = "cancelled" ]; then
               echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
               echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
@@ -1030,8 +1073,22 @@ jobs:
               break
             fi
             
-            sleep $interval
-            elapsed=$((elapsed + interval))
+            # Sleep in small chunks to check for cancellation more frequently
+            sleep_remaining=$poll_interval
+            while [ $sleep_remaining -gt 0 ] && [ $elapsed -lt $timeout ]; do
+              sleep $check_interval
+              elapsed=$((elapsed + check_interval))
+              sleep_remaining=$((sleep_remaining - check_interval))
+              
+              # Check for cancellation during sleep
+              parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
+              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
+              if [ "$parent_run_status" = "cancelled" ]; then
+                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
+                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
+                exit 1
+              fi
+            done
           done
           
           if [ $elapsed -ge $timeout ]; then
