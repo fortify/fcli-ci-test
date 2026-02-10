@@ -27,6 +27,18 @@ on:
         description: 'Operating systems to test (comma-separated: linux, windows, mac)'
         required: false
         default: 'linux,windows'
+      repo_tags:
+        description: 'Repository tags to test (comma-separated: public, private)'
+        required: false
+        default: 'public,private'
+      max_parallel:
+        description: 'Maximum number of parallel test jobs'
+        required: false
+        default: '4'
+      timeout_minutes:
+        description: 'Pipeline polling timeout in minutes'
+        required: false
+        default: '60'
 
 concurrency:
   group: fcli-ci-tests-${{ github.ref }}
@@ -58,6 +70,7 @@ jobs:
           IFS=',' read -ra COMPONENTS <<< "${{ github.event.inputs.components }}"
           IFS=',' read -ra SOURCE_DIRS <<< "${{ github.event.inputs.source_dirs }}"
           IFS=',' read -ra OS_LIST <<< "${{ github.event.inputs.os }}"
+          IFS=',' read -ra REPO_TAGS <<< "${{ github.event.inputs.repo_tags }}"
           
           echo "Input parameters:"
           echo "  CI_SYSTEMS: ${CI_SYSTEMS[@]}"
@@ -65,6 +78,7 @@ jobs:
           echo "  COMPONENTS: ${COMPONENTS[@]}"
           echo "  SOURCE_DIRS: ${SOURCE_DIRS[@]}"
           echo "  OS_LIST: ${OS_LIST[@]}"
+          echo "  REPO_TAGS: ${REPO_TAGS[@]}"
           
           # Read sources configuration
           if [ -f "sources/config.json" ]; then
@@ -99,6 +113,13 @@ jobs:
             # Loop through all repos for this platform
             for repo in $(jq -c '.repos[]' "ci/$platform/config.json"); do
               repo_tag=$(echo "$repo" | jq -r '.tag')
+              
+              # Filter by repo_tags input
+              if ! printf '%s\n' "${REPO_TAGS[@]}" | grep -qx "$repo_tag"; then
+                echo "  Filtering: skipping repo '$repo_tag' (not in repo_tags input)"
+                continue
+              fi
+              
               echo "  Processing repo: $repo_tag"
               
               for component in "${COMPONENTS[@]}"; do
@@ -512,6 +533,7 @@ jobs:
       (needs.sync-external-repos.result == 'success' || needs.sync-external-repos.result == 'skipped')
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(github.event.inputs.max_parallel) }}
       matrix:
         include: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     env:
@@ -612,10 +634,10 @@ jobs:
           run_url="https://github.com/$GITHUB_REPO/actions/runs/$run_id"
           echo "Found workflow run ID: $run_id"
           echo "Workflow URL: $run_url"
-          echo "Polling for completion (timeout: 30 minutes)..."
+          echo "Polling for completion (timeout: ${{ github.event.inputs.timeout_minutes }} minutes)..."
           
           # Poll for completion
-          timeout=1800  # 30 minutes
+          timeout=$((60 * ${{ github.event.inputs.timeout_minutes}}))
           elapsed=0
           interval=30
           test_passed=false
@@ -630,9 +652,11 @@ jobs:
             if [ "$run_status" = "completed" ]; then
               if [ "$run_conclusion" = "success" ]; then
                 echo "✓ Test passed in repo '$REPO_TAG'!"
+                echo "::notice::test success: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
                 test_passed=true
               else
                 echo "✗ Test failed in repo '$REPO_TAG' with conclusion: $run_conclusion"
+                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
                 gh run view $run_id --repo "$GITHUB_REPO" --log-failed || true
                 test_passed=false
               fi
@@ -645,6 +669,7 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url (timeout)"
             test_passed=false
           fi
           
@@ -733,8 +758,8 @@ jobs:
           echo "Pipeline ID: $pipeline_id"
           echo "Pipeline URL: $pipeline_url"
           
-          echo "Polling for completion (timeout: 30 minutes)..."
-          timeout=1800
+          echo "Polling for completion (timeout: ${{ github.event.inputs.timeout_minutes }} minutes)..."
+          timeout=$((60 * ${{ github.event.inputs.timeout_minutes }}))
           elapsed=0
           interval=30
           test_passed=false
@@ -749,11 +774,13 @@ jobs:
             case "$pipeline_status" in
               success)
                 echo "✓ Test passed in repo '$REPO_TAG'!"
+                echo "::notice::test success: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
                 test_passed=true
                 break
                 ;;
               failed|canceled|skipped)
                 echo "✗ Test failed in repo '$REPO_TAG' with status: $pipeline_status"
+                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
                 curl -f -s \
                   "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
                   -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}' || true
@@ -776,6 +803,7 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url (timeout)"
             test_passed=false
           fi
           
@@ -908,8 +936,8 @@ jobs:
           echo "Build ID: $build_id"
           echo "Build URL: $build_url"
           
-          echo "Polling for completion (timeout: 30 minutes)..."
-          timeout=1800
+          echo "Polling for completion (timeout: ${{ github.event.inputs.timeout_minutes }} minutes)..."
+          timeout=$((60 * ${{ github.event.inputs.timeout_minutes }}))
           elapsed=0
           interval=30
           test_passed=false
@@ -927,9 +955,11 @@ jobs:
             if [ "$build_status" = "completed" ]; then
               if [ "$build_result" = "succeeded" ]; then
                 echo "✓ Test passed in repo '$REPO_TAG'!"
+                echo "::notice::test success: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
                 test_passed=true
               else
                 echo "✗ Test failed in repo '$REPO_TAG' with result: $build_result"
+                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
                 # Get failed job logs
                 curl -s \
                   "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
@@ -946,6 +976,7 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
+            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url (timeout)"
             test_passed=false
           fi
           
@@ -981,51 +1012,12 @@ jobs:
           echo "name=$artifact_name" >> $GITHUB_OUTPUT
       
       - name: Upload pipeline info
-        if: always()
+        if: always() && hashFiles('pipeline-info/result.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact-name.outputs.name }}
           path: pipeline-info/
           retention-days: 1
-
-
-      - name: Create job summary
-        if: always()
-        run: |
-          echo "## Test Result" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Read result from artifact
-          if [ -f "pipeline-info/result.json" ]; then
-            platform=$(jq -r '.platform' pipeline-info/result.json)
-            repo_tag=$(jq -r '.repo_tag' pipeline-info/result.json)
-            status=$(jq -r '.status' pipeline-info/result.json)
-            pipeline_url=$(jq -r '.pipeline_url' pipeline-info/result.json)
-            
-            # Format platform name
-            case "$platform" in
-              github) platform_name="GitHub Actions" ;;
-              gitlab) platform_name="GitLab CI/CD" ;;
-              ado) platform_name="Azure DevOps" ;;
-              *) platform_name="$platform" ;;
-            esac
-            
-            # Status icon
-            if [ "$status" = "passed" ]; then
-              status_display="✅ **PASSED**"
-            else
-              status_display="❌ **FAILED**"
-            fi
-            
-            echo "### $status_display" >> $GITHUB_STEP_SUMMARY
-            echo "🔗 [View Pipeline Results]($pipeline_url)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| CI Platform | Repository | Version | fcli Version | Component | Product | Source | OS |" >> $GITHUB_STEP_SUMMARY
-            echo "|-------------|------------|---------|--------------|-----------|---------|--------|-----|" >> $GITHUB_STEP_SUMMARY
-            echo "| $platform_name | \`$repo_tag\` | \`${{ matrix.version }}\` | \`${{ github.event.inputs.fcli_version }}\` | \`${{ matrix.component }}\` | \`${{ matrix.product }}\` | \`${{ matrix.source_dir }}\` | \`${{ matrix.os }}\` |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ No test results available" >> $GITHUB_STEP_SUMMARY
-          fi
   summary:
     name: Test Summary
     needs: [prepare-matrix, test]
