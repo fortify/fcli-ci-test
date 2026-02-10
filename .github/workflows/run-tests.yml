@@ -133,7 +133,7 @@ jobs:
                     else
                       echo "      Filtering: $ci_system + $os (not supported)"
                       filtered_count=$((filtered_count + 1))
-                      filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                      filtered_items="${filtered_items}- $ci_system / $repo_tag / none / $component / none / $os\n"
                     fi
                   done
                 else
@@ -155,7 +155,7 @@ jobs:
                         else
                           echo "      Filtering: $ci_system + $os (not supported)"
                           filtered_count=$((filtered_count + 1))
-                          filtered_items="${filtered_items}- $ci_system + $os (not supported)\n"
+                          filtered_items="${filtered_items}- $ci_system / $repo_tag / $product / $component / $source_dir / $os\n"
                         fi
                       done
                     done
@@ -194,9 +194,6 @@ jobs:
           echo "## Test Matrix Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.create-matrix.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Test Combinations" >> $GITHUB_STEP_SUMMARY
-          echo '${{ steps.create-matrix.outputs.matrix }}' | jq -r '.[] | "- \(.ci_system) / \(.repo_tag) / \(.product) / \(.component) / \(.source_dir) / \(.os)"' >> $GITHUB_STEP_SUMMARY
 
   # Sync external CI repositories (GitLab, ADO) once before running tests
   sync-external-repos:
@@ -551,12 +548,12 @@ jobs:
       - name: Generate Fortify release/appversion name
         id: fortify-release
         run: |
-          # Generate: fcli/ci-test/<platform>/<version>/<os>:<source_dir>
+          # Generate: fcli/ci-test/<platform>/<version>/<os>/<source_dir>:current
           # Skip source_dir if component is setup (uses 'none')
           if [ "${{ matrix.component }}" = "setup" ]; then
             release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}"
           else
-            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}:${{ matrix.source_dir }}"
+            release="fcli/ci-test/${{ matrix.platform }}/${{ matrix.version }}/${{ matrix.os }}/${{ matrix.source_dir }}:current"
           fi
           echo "name=$release" >> $GITHUB_OUTPUT
       
