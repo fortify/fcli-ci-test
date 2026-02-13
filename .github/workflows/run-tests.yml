@@ -701,7 +701,7 @@ jobs:
                 test_passed=true
               else
                 echo "✗ Test failed in repo '$REPO_TAG' with conclusion: $run_conclusion"
-                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
+                echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
                 gh run view $run_id --repo "$GITHUB_REPO" --log-failed || true
                 test_passed=false
               fi
@@ -728,24 +728,9 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url (timeout)"
+            echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url (timeout)"
             test_passed=false
           fi
-          
-          # Create artifact
-          mkdir -p pipeline-info
-          jq -n \
-            --arg platform "github" \
-            --arg repo_tag "$REPO_TAG" \
-            --arg version "${{ matrix.version }}" \
-            --arg component "${{ matrix.component }}" \
-            --arg product "${{ matrix.product }}" \
-            --arg source_dir "${{ matrix.source_dir }}" \
-            --arg os "${{ matrix.os }}" \
-            --arg pipeline_url "$run_url" \
-            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-            > "pipeline-info/result.json"
           
           # Fail the job if test failed
           if [ "$test_passed" != "true" ]; then
@@ -854,7 +839,7 @@ jobs:
                 ;;
               failed|canceled|skipped)
                 echo "✗ Test failed in repo '$REPO_TAG' with status: $pipeline_status"
-                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
+                echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
                 curl -f -s \
                   "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/jobs" \
                   -H "PRIVATE-TOKEN: $GITLAB_TOKEN" | jq '.[] | select(.status == "failed") | {name, stage, status}' || true
@@ -891,24 +876,9 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url (timeout)"
+            echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url (timeout)"
             test_passed=false
           fi
-          
-          # Create artifact
-          mkdir -p pipeline-info
-          jq -n \
-            --arg platform "gitlab" \
-            --arg repo_tag "$REPO_TAG" \
-            --arg version "${{ matrix.version }}" \
-            --arg component "${{ matrix.component }}" \
-            --arg product "${{ matrix.product }}" \
-            --arg source_dir "${{ matrix.source_dir }}" \
-            --arg os "${{ matrix.os }}" \
-            --arg pipeline_url "$pipeline_url" \
-            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-            > "pipeline-info/result.json"
           
           # Fail the job if test failed
           if [ "$test_passed" != "true" ]; then
@@ -1062,7 +1032,7 @@ jobs:
                 test_passed=true
               else
                 echo "✗ Test failed in repo '$REPO_TAG' with result: $build_result"
-                echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
+                echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
                 # Get failed job logs
                 curl -s \
                   "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id/timeline?api-version=7.1-preview.2" \
@@ -1093,118 +1063,12 @@ jobs:
           
           if [ $elapsed -ge $timeout ]; then
             echo "✗ Test timed out after $timeout seconds in repo '$REPO_TAG'"
-            echo "::warning::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url (timeout)"
+            echo "::error::test failure: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url (timeout)"
             test_passed=false
           fi
-          
-          # Create artifact
-          mkdir -p pipeline-info
-          jq -n \
-            --arg platform "ado" \
-            --arg repo_tag "$REPO_TAG" \
-            --arg version "${{ matrix.version }}" \
-            --arg component "${{ matrix.component }}" \
-            --arg product "${{ matrix.product }}" \
-            --arg source_dir "${{ matrix.source_dir }}" \
-            --arg os "${{ matrix.os }}" \
-            --arg pipeline_url "$build_url" \
-            --arg status "$([ "$test_passed" = true ] && echo "passed" || echo "failed")" \
-            '{platform: $platform, repo_tag: $repo_tag, version: $version, component: $component, product: $product, source_dir: $source_dir, os: $os, pipeline_url: $pipeline_url, status: $status}' \
-            > "pipeline-info/result.json"
           
           # Fail the job if test failed
           if [ "$test_passed" != "true" ]; then
             echo "ERROR: Test failed"
             exit 1
-          fi
-      
-      - name: Generate artifact name
-        id: artifact-name
-        if: always()
-        run: |
-          # Sanitize artifact name by replacing invalid characters
-          artifact_name="pipeline-info-${{ matrix.platform }}-${{ matrix.repo_tag }}-${{ matrix.version }}-${{ matrix.product }}-${{ matrix.component }}-${{ matrix.source_dir }}-${{ matrix.os }}"
-          # Replace invalid characters: / : < > | * ? \ " with -
-          artifact_name=$(echo "$artifact_name" | sed 's/[\/:<>|*?\\"'\'']/-/g')
-          echo "name=$artifact_name" >> $GITHUB_OUTPUT
-      
-      - name: Upload pipeline info
-        if: always() && hashFiles('pipeline-info/result.json') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artifact-name.outputs.name }}
-          path: pipeline-info/
-          retention-days: 1
-  summary:
-    name: Test Summary
-    needs: [prepare-matrix, test]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Download all pipeline info
-        if: needs.test.result != 'skipped'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: pipeline-info-*
-          path: pipeline-info
-          merge-multiple: true
-        continue-on-error: true
-      
-      - name: Create summary
-        run: |
-          echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Overall Status:** ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Add pipeline links if available
-          if [ -d "pipeline-info" ] && [ "$(ls -A pipeline-info 2>/dev/null)" ]; then
-            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
-            # Create table header
-            echo "| CI System | Repo | Version | Component | Product | Source | OS | Status |" >> $GITHUB_STEP_SUMMARY
-            echo "|-----------|------|---------|-----------|---------|--------|----|---------|" >> $GITHUB_STEP_SUMMARY
-            
-            # Count pass/fail
-            pass_count=0
-            fail_count=0
-            
-            # Process JSON files
-            for file in pipeline-info/*.json; do
-              if [ -f "$file" ]; then
-                platform=$(jq -r '.platform' "$file")
-                repo_tag=$(jq -r '.repo_tag' "$file")
-                version=$(jq -r '.version' "$file")
-                component=$(jq -r '.component' "$file")
-                product=$(jq -r '.product' "$file")
-                source_dir=$(jq -r '.source_dir' "$file")
-                os=$(jq -r '.os' "$file")
-                pipeline_url=$(jq -r '.pipeline_url' "$file")
-                status=$(jq -r '.status' "$file")
-                
-                # Format CI system name
-                case "$platform" in
-                  github) ci_name="GitHub" ;;
-                  gitlab) ci_name="GitLab" ;;
-                  ado) ci_name="Azure DevOps" ;;
-                  *) ci_name="$platform" ;;
-                esac
-                
-                # Format status
-                if [ "$status" = "passed" ]; then
-                  status_icon="✅ PASS"
-                  pass_count=$((pass_count + 1))
-                else
-                  status_icon="❌ FAIL"
-                  fail_count=$((fail_count + 1))
-                fi
-                
-                # Add table row with link to pipeline
-                echo "| $ci_name | $repo_tag | $version | $component | $product | $source_dir | $os | [$status_icon]($pipeline_url) |" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-            
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Summary:** $pass_count passed, $fail_count failed" >> $GITHUB_STEP_SUMMARY
           fi
