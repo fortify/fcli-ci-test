@@ -30,6 +30,7 @@ name: $(Date:yyyyMMdd)$(Rev:.r)
 trigger: none
 
 variables:
+  - group: fcli-ci-test  # Variable group with Fortify credentials
   - name: VM_IMAGE
     ${{ if eq(parameters.OS, 'linux') }}:
       value: 'ubuntu-latest'

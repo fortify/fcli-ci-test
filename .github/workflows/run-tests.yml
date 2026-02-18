@@ -390,8 +390,8 @@ jobs:
             # Create auth header
             AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w 0)"
             
-            # Variable group name based on repo tag
-            VG_NAME="fcli-ci-test-$REPO_TAG"
+            # Variable group name (consistent across all repos)
+            VG_NAME="fcli-ci-test"
             
             # Get existing variable group
             echo "Fetching $VG_NAME variable group..."
