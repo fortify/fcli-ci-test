@@ -953,7 +953,7 @@ jobs:
           echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
           echo "OS: ${{ matrix.os }}"
           echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
-          echo "SETUP_TASKS length: $(echo "$ado_setup_tasks" | jq 'length')"
+          echo "SETUP_TASKS: $ado_setup_tasks"
           echo "===================================="
           
           build_response=$(curl -s -X POST \
@@ -977,16 +977,9 @@ jobs:
                 \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
                 \"OS\": \"${{ matrix.os }}\",
                 \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
-                \"SETUP_TASKS\": $ado_setup_tasks
+                \"SETUP_TASKS\": \"$ado_setup_tasks\"
               }
             }")
-          
-          # Check if response is valid JSON
-          if ! echo "$build_response" | jq -e . >/dev/null 2>&1; then
-            echo "Error: API returned invalid JSON response:"
-            echo "$build_response"
-            exit 1
-          fi
           
           build_id=$(echo "$build_response" | jq -r '.id')
           if [ "$build_id" = "null" ] || [ -z "$build_id" ]; then

@@ -48,13 +48,28 @@ jobs:
   # No-op job when parameters aren't set (prevents empty pipeline)
   - job: no_op
     displayName: 'No-op (missing parameters)'
-    condition: or(eq('${{ parameters.VERSION }}', ''), eq('${{ parameters.COMPONENT }}', ''))
+    condition: |
+      or(
+        eq('${{ parameters.VERSION }}', ''),
+        eq('${{ parameters.COMPONENT }}', ''),
+        and(
+          eq('${{ parameters.COMPONENT }}', 'ast-scan'),
+          and(
+            ne('${{ parameters.PRODUCT }}', 'fod'),
+            ne('${{ parameters.PRODUCT }}', 'ssc')
+          )
+        )
+      )
     steps:
       - script: |
-          echo "Pipeline requires trigger parameters (VERSION, COMPONENT, etc.)"
-          echo "This job prevents 'no visible jobs' error when parameters are missing"
-          exit 0
-        displayName: 'Info message'
+          echo "ERROR: Pipeline requires valid trigger parameters"
+          echo "VERSION: ${{ parameters.VERSION }}"
+          echo "COMPONENT: ${{ parameters.COMPONENT }}"
+          echo "PRODUCT: ${{ parameters.PRODUCT }}"
+          echo ""
+          echo "This job fails to indicate that no actual test was run."
+          exit 1
+        displayName: 'Fail with error message'
 
   # Setup test (product-agnostic)
   - job: test_setup

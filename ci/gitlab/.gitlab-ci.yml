@@ -23,7 +23,12 @@ no-op:
   stage: test
   rules:
     - if: $VERSION == null || $COMPONENT == null
+    - if: $COMPONENT == "ast-scan" && $PRODUCT != "fod" && $PRODUCT != "ssc"
   script:
-    - echo "Pipeline requires trigger variables (VERSION, COMPONENT, etc.)"
-    - echo "This job prevents 'no visible jobs' error on direct push"
-    - exit 0
+    - echo "ERROR Pipeline requires valid trigger variables"
+    - echo "VERSION $VERSION"
+    - echo "COMPONENT $COMPONENT"
+    - echo "PRODUCT $PRODUCT"
+    - echo ""
+    - echo "This job fails to indicate that no actual test was run."
+    - exit 1
