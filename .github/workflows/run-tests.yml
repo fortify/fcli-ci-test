@@ -129,7 +129,7 @@ jobs:
                   for os in "${OS_LIST[@]}"; do
                     if echo "$supported_os" | grep -q "$os"; then
                       echo "      Adding: $ci_system / $repo_tag / $component / $os"
-                      matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\",\"github_setup_steps\":\"[]\",\"ado_setup_tasks\":\"[]\",\"gitlab_image\":\"\"}")
+                      matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"none\",\"component\":\"$component\",\"source_dir\":\"none\",\"os\":\"$os\",\"gitlab_image\":\"\"}")
                     else
                       echo "      Filtering: $ci_system + $os (not supported)"
                       filtered_count=$((filtered_count + 1))
@@ -140,18 +140,13 @@ jobs:
                   # For ast-scan, iterate products and source_dirs
                   for product in "${PRODUCTS[@]}"; do
                     for source_dir in "${SOURCE_DIRS[@]}"; do
-                      # Get build tool configuration for this source
-                      github_setup_steps=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].githubSetupSteps // []")
-                      ado_setup_tasks=$(echo "$sources_config" | jq -c ".sources[\"$source_dir\"].adoSetupTasks // []")
+                      # Get GitLab image configuration for this source
                       gitlab_image=$(echo "$sources_config" | jq -r ".sources[\"$source_dir\"].gitlabImage // \"\"")
                       
                       for os in "${OS_LIST[@]}"; do
                         if echo "$supported_os" | grep -q "$os"; then
                           echo "      Adding: $ci_system / $repo_tag / $product / $component / $source_dir / $os"
-                          # Escape JSON strings for inclusion in matrix item
-                          github_setup_escaped=$(echo "$github_setup_steps" | jq -c .)
-                          ado_setup_escaped=$(echo "$ado_setup_tasks" | jq -c .)
-                          matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\",\"github_setup_steps\":$github_setup_escaped,\"ado_setup_tasks\":$ado_setup_escaped,\"gitlab_image\":\"$gitlab_image\"}")
+                          matrix_items+=("{\"ci_system\":\"$ci_system\",\"platform\":\"$platform\",\"version\":\"$version\",\"repo_tag\":\"$repo_tag\",\"product\":\"$product\",\"component\":\"$component\",\"source_dir\":\"$source_dir\",\"os\":\"$os\",\"gitlab_image\":\"$gitlab_image\"}")
                         else
                           echo "      Filtering: $ci_system + $os (not supported)"
                           filtered_count=$((filtered_count + 1))
@@ -593,9 +588,6 @@ jobs:
           # Store parent workflow token for cancellation checks
           PARENT_GH_TOKEN="${{ github.token }}"
           
-          # Convert setup steps JSON to string for workflow input
-          setup_steps='${{ toJSON(matrix.github_setup_steps) }}'
-          
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
           repo=$(jq -c ".repos[] | select(.tag == \"$REPO_TAG\")" "ci/github/config.json")
@@ -624,8 +616,7 @@ jobs:
             -f component=${{ matrix.component }} \
             -f source_dir=sources/${{ matrix.source_dir }} \
             -f os=${{ matrix.os }} \
-            -f fortify_release=${{ steps.fortify-release.outputs.name }} \
-            -f setup_steps="$setup_steps"
+            -f fortify_release=${{ steps.fortify-release.outputs.name }}
           
           echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
           pipeline_name="${{ steps.pipeline-name.outputs.name }}"
@@ -897,9 +888,6 @@ jobs:
           # Trap termination signals for graceful cancellation
           trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
           
-          # Convert ADO setup tasks to JSON string for pipeline variable
-          ado_setup_tasks='${{ toJSON(matrix.ado_setup_tasks) }}'
-          
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
           repo=$(jq -c ".repos[] | select(.tag == \"$REPO_TAG\")" "ci/ado/config.json")
@@ -953,7 +941,6 @@ jobs:
           echo "SOURCE_DIR: sources/${{ matrix.source_dir }}"
           echo "OS: ${{ matrix.os }}"
           echo "FORTIFY_RELEASE: ${{ steps.fortify-release.outputs.name }}"
-          echo "SETUP_TASKS: $ado_setup_tasks"
           echo "===================================="
           
           build_response=$(curl -s -X POST \
@@ -976,8 +963,7 @@ jobs:
                 \"COMPONENT\": \"${{ matrix.component }}\",
                 \"SOURCE_DIR\": \"sources/${{ matrix.source_dir }}\",
                 \"OS\": \"${{ matrix.os }}\",
-                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\",
-                \"SETUP_TASKS\": \"$ado_setup_tasks\"
+                \"FORTIFY_RELEASE\": \"${{ steps.fortify-release.outputs.name }}\"
               }
             }")
           

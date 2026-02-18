@@ -24,9 +24,6 @@ parameters:
   - name: FORTIFY_RELEASE
     type: string
     default: 'main'
-  - name: SETUP_TASKS
-    type: string
-    default: '[]'
 
 name: $(Date:yyyyMMdd)$(Rev:.r)
 
@@ -150,57 +147,8 @@ jobs:
           echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
           echo "OS: ${{ parameters.OS }}"
           echo "FORTIFY_RELEASE: ${{ parameters.FORTIFY_RELEASE }}"
-          echo "SETUP_TASKS: ${{ parameters.SETUP_TASKS }}"
           echo "=========================="
         displayName: 'Debug parameters'
-      
-      - task: Bash@3
-        displayName: 'Setup build tools'
-        inputs:
-          targetType: 'inline'
-          script: |
-            # Parse SETUP_TASKS JSON and run appropriate setup commands
-            setup_tasks='${{ parameters.SETUP_TASKS }}'
-            if [ "$setup_tasks" != "[]" ] && [ -n "$setup_tasks" ]; then
-              echo "Setting up build tools based on source language..."
-              echo "$setup_tasks" | jq -c '.[]' | while read -r task; do
-                task_name=$(echo "$task" | jq -r '.task // empty')
-                echo "Processing task: $task_name"
-                
-                # Handle Java setup
-                if [[ "$task_name" == *"JavaToolInstaller"* ]]; then
-                  java_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Java $java_version is pre-installed on ubuntu-latest"
-                  java -version
-                fi
-                
-                # Handle Node.js setup
-                if [[ "$task_name" == *"NodeTool"* ]]; then
-                  node_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Setting up Node.js $node_version..."
-                  # Use nvm if available, otherwise node is pre-installed
-                  if command -v nvm &> /dev/null; then
-                    nvm install "$node_version"
-                    nvm use "$node_version"
-                  fi
-                  node --version
-                fi
-                
-                # Handle .NET setup
-                if [[ "$task_name" == *"UseDotNet"* ]]; then
-                  dotnet_version=$(echo "$task" | jq -r '.inputs.version')
-                  echo ".NET $dotnet_version setup"
-                  dotnet --version
-                fi
-                
-                # Handle Python setup
-                if [[ "$task_name" == *"UsePythonVersion"* ]]; then
-                  python_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Python $python_version is pre-installed"
-                  python --version
-                fi
-              done
-            fi
       
       - task: Bash@3
         displayName: 'Test FoD ast-scan'
@@ -235,57 +183,8 @@ jobs:
           echo "SOURCE_DIR: ${{ parameters.SOURCE_DIR }}"
           echo "OS: ${{ parameters.OS }}"
           echo "FORTIFY_RELEASE: ${{ parameters.FORTIFY_RELEASE }}"
-          echo "SETUP_TASKS: ${{ parameters.SETUP_TASKS }}"
           echo "=========================="
         displayName: 'Debug parameters'
-      
-      - task: Bash@3
-        displayName: 'Setup build tools'
-        inputs:
-          targetType: 'inline'
-          script: |
-            # Parse SETUP_TASKS JSON and run appropriate setup commands
-            setup_tasks='${{ parameters.SETUP_TASKS }}'
-            if [ "$setup_tasks" != "[]" ] && [ -n "$setup_tasks" ]; then
-              echo "Setting up build tools based on source language..."
-              echo "$setup_tasks" | jq -c '.[]' | while read -r task; do
-                task_name=$(echo "$task" | jq -r '.task // empty')
-                echo "Processing task: $task_name"
-                
-                # Handle Java setup
-                if [[ "$task_name" == *"JavaToolInstaller"* ]]; then
-                  java_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Java $java_version is pre-installed on ubuntu-latest"
-                  java -version
-                fi
-                
-                # Handle Node.js setup
-                if [[ "$task_name" == *"NodeTool"* ]]; then
-                  node_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Setting up Node.js $node_version..."
-                  # Use nvm if available, otherwise node is pre-installed
-                  if command -v nvm &> /dev/null; then
-                    nvm install "$node_version"
-                    nvm use "$node_version"
-                  fi
-                  node --version
-                fi
-                
-                # Handle .NET setup
-                if [[ "$task_name" == *"UseDotNet"* ]]; then
-                  dotnet_version=$(echo "$task" | jq -r '.inputs.version')
-                  echo ".NET $dotnet_version setup"
-                  dotnet --version
-                fi
-                
-                # Handle Python setup
-                if [[ "$task_name" == *"UsePythonVersion"* ]]; then
-                  python_version=$(echo "$task" | jq -r '.inputs.versionSpec')
-                  echo "Python $python_version is pre-installed"
-                  python --version
-                fi
-              done
-            fi
       
       - task: Bash@3
         displayName: 'Test SSC ast-scan'
