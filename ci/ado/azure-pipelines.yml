@@ -90,7 +90,11 @@ jobs:
             Write-Host "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap with shell approach"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             npx @fortify/setup@v2 env pwsh | Out-String | Invoke-Expression
-            fcli --version
+            if ($env:FCLI_CMD) {
+              & $env:FCLI_CMD --version
+            } else {
+              fcli --version
+            }
           displayName: 'Test 1: Shell approach'
           env:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
@@ -104,7 +108,11 @@ jobs:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - pwsh: |
-            fcli --version
+            if ($env:FCLI_CMD) {
+              & $env:FCLI_CMD --version
+            } else {
+              fcli --version
+            }
           displayName: 'Test 2: ADO approach - Verify'
       
       - ${{ if ne(parameters.OS, 'windows') }}:
@@ -112,7 +120,7 @@ jobs:
             echo "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap with shell approach"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             source <(npx @fortify/setup@v2 env shell)
-            fcli --version
+            "${FCLI_CMD:-fcli}" --version
           displayName: 'Test 1: Shell approach'
           env:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
@@ -129,7 +137,7 @@ jobs:
           displayName: 'Test 2: ADO approach - Set env'
         
         - bash: |
-            fcli --version
+            "${FCLI_CMD:-fcli}" --version
           displayName: 'Test 2: ADO approach - Verify'
 
   # FoD ast-scan test
@@ -159,7 +167,7 @@ jobs:
             echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for FoD"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             source <(npx @fortify/setup@v2 env shell)
-            fcli action run ci
+            "${FCLI_CMD:-fcli}" action run ci
         env:
           FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
           FOD_URL: $(FCLI_FT_FOD_URL)
@@ -195,7 +203,7 @@ jobs:
             echo "Testing @fortify/setup ${{ parameters.VERSION }} with fcli action run ci for SSC"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
             source <(npx @fortify/setup@v2 env shell)
-            fcli action run ci
+            "${FCLI_CMD:-fcli}" action run ci
         env:
           FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
           SSC_URL: $(FCLI_FT_SSC_URL)
