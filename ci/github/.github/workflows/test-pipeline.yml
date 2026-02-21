@@ -90,6 +90,7 @@ jobs:
           FOD_RELEASE: ${{ inputs.fortify_release }}
           DO_SCA_SCAN: true
           DO_AVIATOR_AUDIT: true
+          OVERRIDE_SAST_SETTINGS: true
   
   # SSC ast-scan component test
   test-ssc-ast-scan:
