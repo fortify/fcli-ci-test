@@ -175,6 +175,8 @@ jobs:
           FOD_CLIENT_SECRET: $(FCLI_FT_FOD_CLIENT_SECRET)
           FOD_RELEASE: ${{ parameters.FORTIFY_RELEASE }}
           SOURCE_DIR: $(Build.SourcesDirectory)/${{ parameters.SOURCE_DIR }}
+          DO_SCA_SCAN: true
+          DO_AVIATOR_AUDIT: true
 
   # SSC ast-scan test
   - job: test_ssc_ast_scan

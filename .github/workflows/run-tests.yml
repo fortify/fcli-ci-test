@@ -34,7 +34,7 @@ on:
       max_parallel:
         description: 'Maximum number of parallel test jobs'
         required: false
-        default: '4'
+        default: '2'
       timeout_minutes:
         description: 'Pipeline polling timeout in minutes'
         required: false
