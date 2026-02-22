@@ -134,7 +134,7 @@ jobs:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - bash: |
-            source <(npx @fortify/setup@v2 env ado --output-as=bash)
+            source <(npx @fortify/setup@v2 env ado --output-as=shell)
             "${FCLI_CMD:-fcli}" --version
           displayName: 'Test 2: ADO approach - Set env'
         
