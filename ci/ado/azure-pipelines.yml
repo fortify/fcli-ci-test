@@ -102,7 +102,8 @@ jobs:
         - pwsh: |
             Write-Host "Testing @fortify/setup ${{ parameters.VERSION }} bootstrap with ADO approach"
             npx @fortify/setup@v2 env init --tools=fcli:bootstrapped
-            npx @fortify/setup@v2 env ado
+            npx @fortify/setup@v2 env ado --output-as=pwsh | Out-String | Invoke-Expression
+            & $env:FCLI_CMD --version
           displayName: 'Test 2: ADO approach - Initialize'
           env:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
@@ -133,7 +134,8 @@ jobs:
             FCLI_BOOTSTRAP_VERSION: ${{ parameters.FCLI_VERSION }}
         
         - bash: |
-            npx @fortify/setup@v2 env ado
+            source <(npx @fortify/setup@v2 env ado --output-as=bash)
+            "${FCLI_CMD:-fcli}" --version
           displayName: 'Test 2: ADO approach - Set env'
         
         - bash: |
