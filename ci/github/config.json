@@ -3,12 +3,22 @@
     {
       "tag": "public",
       "url": "https://github.com/fortify/fcli-ci-test-public",
-      "pat_secret": "GH_PAT"
+      "pat_secret": "GH_PAT",
+      "runsOn": {
+        "linux": "ubuntu-latest",
+        "windows": "windows-latest",
+        "mac": "macos-latest"
+      }
     },
     {
       "tag": "private",
       "url": "https://github.com/fortify/fcli-ci-test-private",
-      "pat_secret": "GH_PAT"
+      "pat_secret": "GH_PAT",
+      "runsOn": {
+        "linux": "arc-runner-linux",
+        "windows": "arc-runner-windows",
+        "mac": "macos-latest"
+      }
     }
   ],
   "supportedOs": ["linux", "windows", "mac"],

@@ -32,12 +32,16 @@ on:
         description: 'JSON array of build tool setup steps'
         required: false
         default: '[]'
+      runs_on:
+        description: 'Runner label override'
+        required: false
+        default: ''
 
 jobs:
   # Setup component test (product-agnostic)
   test-setup:
     name: ${{ inputs.version }} / setup / ${{ inputs.os }}
-    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    runs-on: ${{ inputs.runs_on != '' && inputs.runs_on || inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: ${{ inputs.component == 'setup' }}
     steps:
       - name: Checkout fortify/github-action
@@ -61,7 +65,7 @@ jobs:
   # FoD ast-scan component test  
   test-fod-ast-scan:
     name: ${{ inputs.version }} / FoD / ast-scan / ${{ inputs.os }}
-    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    runs-on: ${{ inputs.runs_on != '' && inputs.runs_on || inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: ${{ inputs.product == 'fod' && inputs.component == 'ast-scan' }}
     steps:
       - name: Checkout test sources
@@ -95,7 +99,7 @@ jobs:
   # SSC ast-scan component test
   test-ssc-ast-scan:
     name: ${{ inputs.version }} / SSC / ast-scan / ${{ inputs.os }}
-    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    runs-on: ${{ inputs.runs_on != '' && inputs.runs_on || inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     if: ${{ inputs.product == 'ssc' && inputs.component == 'ast-scan' }}
     steps:
       - name: Checkout test sources

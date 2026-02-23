@@ -603,6 +603,18 @@ jobs:
           echo "Triggering GitHub test in repo '$REPO_TAG' ($GITHUB_REPO)"
           echo "Using PAT secret: $PAT_SECRET"
           echo "===================================="
+
+          # Resolve runs-on label from repository config, fallback to legacy defaults
+          RUNS_ON=$(echo "$repo" | jq -r --arg os "${{ matrix.os }}" '.runsOn[$os] // empty')
+          if [ -z "$RUNS_ON" ] || [ "$RUNS_ON" = "null" ]; then
+            case "${{ matrix.os }}" in
+              linux) RUNS_ON="ubuntu-latest" ;;
+              windows) RUNS_ON="windows-latest" ;;
+              mac) RUNS_ON="macos-latest" ;;
+              *) RUNS_ON="ubuntu-latest" ;;
+            esac
+          fi
+          echo "Using runner label: $RUNS_ON"
           
           # Trigger workflow and capture the time
           trigger_time=$(date -u +%s)
@@ -616,7 +628,8 @@ jobs:
             -f component=${{ matrix.component }} \
             -f source_dir=sources/${{ matrix.source_dir }} \
             -f os=${{ matrix.os }} \
-            -f fortify_release=${{ steps.fortify-release.outputs.name }}
+            -f fortify_release=${{ steps.fortify-release.outputs.name }} \
+            -f runs_on="$RUNS_ON"
           
           echo "Triggered GitHub workflow in '$REPO_TAG', waiting for run to start..."
           pipeline_name="${{ steps.pipeline-name.outputs.name }}"
