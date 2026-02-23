@@ -1,0 +1,22 @@
+parameters:
+  - name: javaVersion
+    type: string
+    default: '17'
+  - name: nodeVersion
+    type: string
+    default: '18'
+
+steps:
+  - template: sources/java.yml
+    parameters:
+      javaVersion: ${{ parameters.javaVersion }}
+
+  - template: sources/node.yml
+    parameters:
+      nodeVersion: ${{ parameters.nodeVersion }}
+
+  - script: |
+      echo "No language-specific build tools configured for '${{ variables.source_dir }}'"
+      exit 1
+    displayName: 'No build tools required'
+    condition: and(succeeded(), not(or(contains(variables['source_dir'], 'java'), contains(variables['source_dir'], 'node'))))

@@ -1,0 +1,26 @@
+name: 'Setup Java Tools'
+description: 'Sets up Java (and Maven cache) for Java-based sources'
+inputs:
+  java-version:
+    description: 'Java version to install'
+    required: false
+    default: '17'
+  cache-maven:
+    description: 'Enable Maven dependency cache'
+    required: false
+    default: 'true'
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+        cache: ${{ inputs.cache-maven == 'true' && 'maven' || '' }}
+
+    - name: Verify Java and Maven
+      shell: bash
+      run: |
+        java -version || true
+        mvn -v || true

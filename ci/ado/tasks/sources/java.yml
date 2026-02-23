@@ -1,0 +1,18 @@
+parameters:
+  - name: javaVersion
+    type: string
+    default: '17'
+
+steps:
+  - task: JavaToolInstaller@0
+    displayName: "Install Java ${{ parameters.javaVersion }}"
+    inputs:
+      versionSpec: '${{ parameters.javaVersion }}'
+      jdkArchitecture: 'x64'
+    condition: and(succeeded(), contains(variables['source_dir'], 'java'))
+
+  - script: |
+      java -version || true
+      mvn -v || true
+    displayName: 'Verify Java and Maven'
+    condition: and(succeeded(), contains(variables['source_dir'], 'java'))

@@ -1,0 +1,17 @@
+parameters:
+  - name: nodeVersion
+    type: string
+    default: '18'
+
+steps:
+  - task: NodeTool@0
+    displayName: "Install Node.js ${{ parameters.nodeVersion }}"
+    inputs:
+      versionSpec: '${{ parameters.nodeVersion }}'
+    condition: and(succeeded(), contains(variables['source_dir'], 'node'))
+
+  - script: |
+      node --version || true
+      npm --version || true
+    displayName: 'Verify Node and NPM'
+    condition: and(succeeded(), contains(variables['source_dir'], 'node'))
