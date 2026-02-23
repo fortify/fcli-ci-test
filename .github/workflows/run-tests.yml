@@ -520,7 +520,7 @@ jobs:
     needs: [prepare-matrix, sync-external-repos]
     runs-on: ubuntu-latest
     if: |
-      always() &&
+      !cancelled() &&
       needs.prepare-matrix.outputs.matrix != '[]' &&
       (needs.sync-external-repos.result == 'success' || needs.sync-external-repos.result == 'skipped')
     strategy:
@@ -568,8 +568,12 @@ jobs:
         id: check-cancelled
         run: |
           # Check if this workflow run has been cancelled
-          run_status=$(gh run view ${{ github.run_id }} --json status --jq '.status')
-          if [ "$run_status" = "cancelled" ]; then
+          run_state=$(gh api \
+            "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --jq '.status + ":" + (.conclusion // "")')
+          run_status=$(echo "$run_state" | cut -d: -f1)
+          run_conclusion=$(echo "$run_state" | cut -d: -f2)
+          if [ "$run_conclusion" = "cancelled" ]; then
             echo "Workflow run has been cancelled, stopping job"
             exit 1
           fi
@@ -582,11 +586,37 @@ jobs:
         run: |
           set -e
           
-          # Trap termination signals for graceful cancellation
-          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
+          run_id=""
+          GITHUB_REPO=""
           
           # Store parent workflow token for cancellation checks
           PARENT_GH_TOKEN="${{ github.token }}"
+
+          cleanup_on_cancel() {
+            echo "✗ Received termination signal, cleaning up..."
+            if [ -n "$run_id" ] && [ -n "$GITHUB_REPO" ]; then
+              echo "Cancelling downstream GitHub workflow run $run_id in $GITHUB_REPO"
+              gh run cancel "$run_id" --repo "$GITHUB_REPO" || true
+            fi
+            exit 143
+          }
+          trap cleanup_on_cancel TERM INT
+
+          check_parent_cancelled() {
+            parent_run_state=$(GH_TOKEN="$PARENT_GH_TOKEN" gh api \
+              "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --jq '.status + ":" + (.conclusion // "")' 2>/dev/null || echo "unknown:unknown")
+            parent_run_status=$(echo "$parent_run_state" | cut -d: -f1)
+            parent_run_conclusion=$(echo "$parent_run_state" | cut -d: -f2)
+
+            echo "[DEBUG] Parent workflow status: $parent_run_status, conclusion: ${parent_run_conclusion:-none}"
+
+            if [ "$parent_run_conclusion" = "cancelled" ]; then
+              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
+              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
+              exit 1
+            fi
+          }
           
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
@@ -683,14 +713,7 @@ jobs:
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
-            # Check if this workflow run has been cancelled
-            parent_run_status=$(GH_TOKEN="$PARENT_GH_TOKEN" gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-            echo "[DEBUG] Parent workflow status check: $parent_run_status"
-            if [ "$parent_run_status" = "cancelled" ]; then
-              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
-              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
-              exit 1
-            fi
+            check_parent_cancelled
             
             status=$(gh run view $run_id --repo "$GITHUB_REPO" --json status,conclusion --jq '.status + ":" + .conclusion')
             run_status=$(echo $status | cut -d: -f1)
@@ -720,13 +743,7 @@ jobs:
               sleep_remaining=$((sleep_remaining - check_interval))
               
               # Check for cancellation during sleep
-              parent_run_status=$(GH_TOKEN="$PARENT_GH_TOKEN" gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
-              if [ "$parent_run_status" = "cancelled" ]; then
-                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
-                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $run_url"
-                exit 1
-              fi
+              check_parent_cancelled
             done
           done
           
@@ -750,8 +767,40 @@ jobs:
         run: |
           set -e
           
-          # Trap termination signals for graceful cancellation
-          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
+          pipeline_id=""
+          GITLAB_PROJECT_ID=""
+          GITLAB_TOKEN=""
+
+          # Store parent workflow token for cancellation checks
+          PARENT_GH_TOKEN="${{ github.token }}"
+
+          cleanup_on_cancel() {
+            echo "✗ Received termination signal, cleaning up..."
+            if [ -n "$pipeline_id" ] && [ -n "$GITLAB_PROJECT_ID" ] && [ -n "$GITLAB_TOKEN" ]; then
+              echo "Cancelling downstream GitLab pipeline $pipeline_id in project $GITLAB_PROJECT_ID"
+              curl -s -X POST \
+                "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id/cancel" \
+                -H "PRIVATE-TOKEN: $GITLAB_TOKEN" >/dev/null || true
+            fi
+            exit 143
+          }
+          trap cleanup_on_cancel TERM INT
+
+          check_parent_cancelled() {
+            parent_run_state=$(GH_TOKEN="$PARENT_GH_TOKEN" gh api \
+              "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --jq '.status + ":" + (.conclusion // "")' 2>/dev/null || echo "unknown:unknown")
+            parent_run_status=$(echo "$parent_run_state" | cut -d: -f1)
+            parent_run_conclusion=$(echo "$parent_run_state" | cut -d: -f2)
+
+            echo "[DEBUG] Parent workflow status: $parent_run_status, conclusion: ${parent_run_conclusion:-none}"
+
+            if [ "$parent_run_conclusion" = "cancelled" ]; then
+              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
+              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
+              exit 1
+            fi
+          }
           
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
@@ -819,14 +868,7 @@ jobs:
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
-            # Check if this workflow run has been cancelled
-            parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-            echo "[DEBUG] Parent workflow status check: $parent_run_status"
-            if [ "$parent_run_status" = "cancelled" ]; then
-              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
-              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
-              exit 1
-            fi
+            check_parent_cancelled
             
             pipeline_status=$(curl -f -s \
               "https://gitlab.com/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$pipeline_id" \
@@ -868,13 +910,7 @@ jobs:
               sleep_remaining=$((sleep_remaining - check_interval))
               
               # Check for cancellation during sleep
-              parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
-              if [ "$parent_run_status" = "cancelled" ]; then
-                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
-                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $pipeline_url"
-                exit 1
-              fi
+              check_parent_cancelled
             done
           done
           
@@ -898,8 +934,43 @@ jobs:
         run: |
           set -e
           
-          # Trap termination signals for graceful cancellation
-          trap 'echo "✗ Received termination signal, exiting..."; exit 143' TERM INT
+          build_id=""
+          ADO_ORG=""
+          ADO_PROJ=""
+          AUTH_HEADER=""
+
+          # Store parent workflow token for cancellation checks
+          PARENT_GH_TOKEN="${{ github.token }}"
+
+          cleanup_on_cancel() {
+            echo "✗ Received termination signal, cleaning up..."
+            if [ -n "$build_id" ] && [ -n "$ADO_ORG" ] && [ -n "$ADO_PROJ" ] && [ -n "$AUTH_HEADER" ]; then
+              echo "Cancelling downstream ADO build $build_id in $ADO_ORG/$ADO_PROJ"
+              curl -s -X PATCH \
+                "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
+                -H "$AUTH_HEADER" \
+                -H "Content-Type: application/json" \
+                -d '{"status":"cancelling"}' >/dev/null || true
+            fi
+            exit 143
+          }
+          trap cleanup_on_cancel TERM INT
+
+          check_parent_cancelled() {
+            parent_run_state=$(GH_TOKEN="$PARENT_GH_TOKEN" gh api \
+              "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --jq '.status + ":" + (.conclusion // "")' 2>/dev/null || echo "unknown:unknown")
+            parent_run_status=$(echo "$parent_run_state" | cut -d: -f1)
+            parent_run_conclusion=$(echo "$parent_run_state" | cut -d: -f2)
+
+            echo "[DEBUG] Parent workflow status: $parent_run_status, conclusion: ${parent_run_conclusion:-none}"
+
+            if [ "$parent_run_conclusion" = "cancelled" ]; then
+              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
+              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
+              exit 1
+            fi
+          }
           
           # Get repo info from matrix
           REPO_TAG="${{ matrix.repo_tag }}"
@@ -999,14 +1070,7 @@ jobs:
           test_passed=false
           
           while [ $elapsed -lt $timeout ]; do
-            # Check if this workflow run has been cancelled
-            parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-            echo "[DEBUG] Parent workflow status check: $parent_run_status"
-            if [ "$parent_run_status" = "cancelled" ]; then
-              echo "✗ Parent workflow run has been cancelled, stopping test in repo '$REPO_TAG'"
-              echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
-              exit 1
-            fi
+            check_parent_cancelled
             
             build_info=$(curl -s \
               "https://dev.azure.com/$ADO_ORG/$ADO_PROJ/_apis/build/builds/$build_id?api-version=7.1-preview.7" \
@@ -1043,13 +1107,7 @@ jobs:
               sleep_remaining=$((sleep_remaining - check_interval))
               
               # Check for cancellation during sleep
-              parent_run_status=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json status --jq '.status' 2>/dev/null || echo "unknown")
-              echo "[DEBUG] Parent workflow status check (during sleep): $parent_run_status"
-              if [ "$parent_run_status" = "cancelled" ]; then
-                echo "✗ Parent workflow run has been cancelled during sleep, stopping test in repo '$REPO_TAG'"
-                echo "::warning::test cancelled: ${{ steps.pipeline-name.outputs.name }} - pipeline: $build_url"
-                exit 1
-              fi
+              check_parent_cancelled
             done
           done
           
