@@ -37,6 +37,13 @@ on:
         required: false
         default: ''
 
+# Allow workflow to write check runs, pull requests and security reports
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+  security-events: write
+
 jobs:
   # Setup component test (product-agnostic)
   test-setup:
