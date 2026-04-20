@@ -90,7 +90,32 @@ jobs:
           ref: ${{ inputs.version }}
           path: github-action
       
+      - name: Detect action variant
+        id: detect
+        run: |
+          if [ -d "./github-action/with-debug-upload-github" ]; then
+            echo "has_debug_upload=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_debug_upload=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+      
+      - name: Run AST scan action (with debug upload)
+        if: steps.detect.outputs.has_debug_upload == 'true'
+        uses: ./github-action/with-debug-upload-github
+        env:
+          FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
+          SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
+          FOD_URL: ${{ vars.FCLI_FT_FOD_URL }}
+          FOD_CLIENT_ID: ${{ secrets.FCLI_FT_FOD_CLIENT_ID }}
+          FOD_CLIENT_SECRET: ${{ secrets.FCLI_FT_FOD_CLIENT_SECRET }}
+          FOD_RELEASE: ${{ inputs.fortify_release }}
+          DO_SCA_SCAN: true
+          DO_AVIATOR_AUDIT: true
+          OVERRIDE_SAST_SETTINGS: true
+      
       - name: Run AST scan action
+        if: steps.detect.outputs.has_debug_upload != 'true'
         uses: ./github-action
         env:
           FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
@@ -124,7 +149,31 @@ jobs:
           ref: ${{ inputs.version }}
           path: github-action
       
+      - name: Detect action variant
+        id: detect
+        run: |
+          if [ -d "./github-action/with-debug-upload-github" ]; then
+            echo "has_debug_upload=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_debug_upload=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+      
+      - name: Run AST scan action (with debug upload)
+        if: steps.detect.outputs.has_debug_upload == 'true'
+        uses: ./github-action/with-debug-upload-github
+        env:
+          FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
+          SOURCE_DIR: ${{ github.workspace }}/${{ inputs.source_dir }}
+          SSC_URL: ${{ vars.FCLI_FT_SSC_URL }}
+          SSC_TOKEN: ${{ secrets.FCLI_FT_SSC_TOKEN }}
+          SC_SAST_TOKEN: ${{ secrets.FCLI_FT_SC_SAST_TOKEN }}
+          SSC_APPVERSION: ${{ inputs.fortify_release }}
+          SETUP_EXTRA_OPTS: --issue-template "Prioritized High Risk Issue Template"
+          SAST_SCAN_EXTRA_OPTS: --no-replace
+      
       - name: Run AST scan action
+        if: steps.detect.outputs.has_debug_upload != 'true'
         uses: ./github-action
         env:
           FCLI_BOOTSTRAP_VERSION: ${{ inputs.fcli_version }}
